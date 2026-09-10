@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:macos": "bash scripts/build-macos.sh",
     "test": "vitest run --maxWorkers=2",
     "tauri": "tauri"
   },

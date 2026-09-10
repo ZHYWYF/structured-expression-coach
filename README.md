@@ -19,6 +19,14 @@ pnpm dev
 pnpm tauri dev
 ```
 
+在 macOS 上生成通用架构安装包：
+
+```bash
+pnpm build:macos
+```
+
+详细说明见 `docs/macOS打包.md`。
+
 ## 验证
 
 ```bash

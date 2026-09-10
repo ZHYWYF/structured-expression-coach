@@ -1,0 +1,32 @@
+name: tauri-macos-build
+
+trigger:
+  change:
+  manual:
+
+jobs:
+  tauri_build:
+    name: Build Yanxu macOS universal installer
+    image: none
+    runs-on:
+      macos: {}
+    steps:
+      - id: prepare_toolchain
+        name: Prepare Node and Rust
+        commands:
+          - brew install node@22 pnpm || true
+          - command -v rustup >/dev/null || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          - source "$HOME/.cargo/env"
+          - rustup default stable
+          - rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - id: build_installer
+        name: Build universal macOS installer
+        commands:
+          - source "$HOME/.cargo/env"
+          - bash scripts/build-macos.sh
+      - id: upload_installer
+        name: Upload macOS installer
+        uses: actions/upload-artifact
+        inputs:
+          name: yanxu-macos-universal
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg
