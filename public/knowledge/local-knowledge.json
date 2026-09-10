@@ -1,0 +1,1282 @@
+{
+  "schemaVersion": "1.0.0",
+  "packId": "structured-expression-mvp",
+  "packVersion": "0.1.0",
+  "reviewStatus": "sample_review",
+  "runtime": {
+    "mode": "lexical_exact",
+    "executableRuleCount": 16,
+    "metadataOnlyRuleCount": 48,
+    "disabledPendingDictionaryCandidates": 321
+  },
+  "lexicalRules": [
+    {
+      "id": "GEN-001",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "口头禅",
+      "issueType": "无意义填充词",
+      "matchType": "lexical",
+      "patterns": [
+        "呃",
+        "额",
+        "嗯，",
+        "嗯嗯",
+        "就是说",
+        "那个那个"
+      ],
+      "reason": "填充词过多会打断信息节奏，并降低表达的确定感。",
+      "suggestion": "删除填充词，停顿后直接说结论或下一条信息。",
+      "replacements": [],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "low",
+      "priority": 55,
+      "sourceRef": "产品规则/口头禅",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-002",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "口头禅",
+      "issueType": "高频连接词",
+      "matchType": "lexical",
+      "patterns": [
+        "然后呢",
+        "然后就是",
+        "完了之后"
+      ],
+      "reason": "连续依赖同一个连接词会掩盖事件之间真正的因果、转折或递进关系。",
+      "suggestion": "根据真实关系改为“因此”“但”“随后”或直接分句。",
+      "replacements": [
+        "因此",
+        "随后",
+        "但",
+        "同时"
+      ],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "medium",
+      "priority": 65,
+      "sourceRef": "产品规则/逻辑连接",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-003",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "口语化",
+      "issueType": "泛化动作词",
+      "matchType": "lexical",
+      "patterns": [
+        "搞一下",
+        "弄一下",
+        "做一下",
+        "处理一下",
+        "处理了一下"
+      ],
+      "reason": "泛化动作词无法说明具体采取了什么行动。",
+      "suggestion": "替换为可观察的动作，例如分析、设计、协调、验证、上线。",
+      "replacements": [
+        "分析",
+        "设计",
+        "协调",
+        "验证",
+        "上线"
+      ],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "medium",
+      "priority": 75,
+      "sourceRef": "产品规则/动作具体性",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-004",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "模糊表达",
+      "issueType": "模糊数量",
+      "matchType": "lexical",
+      "patterns": [
+        "一些",
+        "很多",
+        "不少",
+        "大部分",
+        "少量"
+      ],
+      "reason": "数量范围不明确时，听者无法判断实际规模和影响。",
+      "suggestion": "有数据时给出数量、比例或区间；没有数据时说明判断依据。",
+      "replacements": [],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "medium",
+      "priority": 78,
+      "sourceRef": "产品规则/量化表达",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-005",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "模糊表达",
+      "issueType": "模糊程度",
+      "matchType": "lexical",
+      "patterns": [
+        "比较好",
+        "还可以",
+        "还行",
+        "还不错",
+        "挺不错",
+        "效果不错"
+      ],
+      "reason": "笼统评价缺少衡量标准，难以支持判断。",
+      "suggestion": "说明具体改善了什么指标、体验或结果。",
+      "replacements": [],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "medium",
+      "priority": 80,
+      "sourceRef": "产品规则/结果具体性",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-006",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "模糊表达",
+      "issueType": "时间范围模糊",
+      "matchType": "lexical",
+      "patterns": [
+        "最近",
+        "之前",
+        "后来",
+        "过一阵",
+        "尽快"
+      ],
+      "reason": "时间边界不清会导致进度、承诺或因果关系难以核验。",
+      "suggestion": "替换为具体日期、周期或可验证的时间节点。",
+      "replacements": [],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "medium",
+      "priority": 72,
+      "sourceRef": "产品规则/时间具体性",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-008",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "模糊表达",
+      "issueType": "范围不清",
+      "matchType": "lexical",
+      "patterns": [
+        "各方面",
+        "相关事情",
+        "相关工作",
+        "这类问题",
+        "等等"
+      ],
+      "reason": "概括范围过宽会隐藏真正需要关注的对象。",
+      "suggestion": "列出最重要的两到三项，或明确当前只讨论哪一项。",
+      "replacements": [],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "medium",
+      "priority": 70,
+      "sourceRef": "产品规则/范围清晰度",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-009",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "确定性",
+      "issueType": "过度弱化",
+      "matchType": "lexical",
+      "patterns": [
+        "我感觉可能",
+        "我觉得应该",
+        "可能大概",
+        "基本上应该"
+      ],
+      "reason": "多个弱化词叠加会让明确判断显得缺乏把握。",
+      "suggestion": "区分事实、判断和假设；能确认时直接陈述，不能确认时说明不确定来源。",
+      "replacements": [],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "medium",
+      "priority": 82,
+      "sourceRef": "产品规则/确定性表达",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-010",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "确定性",
+      "issueType": "无依据绝对化",
+      "matchType": "lexical",
+      "patterns": [
+        "一定会",
+        "绝对不会",
+        "完全没有问题",
+        "肯定是"
+      ],
+      "reason": "缺少依据的绝对判断容易造成过度承诺或错误归因。",
+      "suggestion": "补充证据和适用条件，或改为有边界的判断。",
+      "replacements": [
+        "根据当前数据，预计",
+        "在现有条件下"
+      ],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "high",
+      "priority": 88,
+      "sourceRef": "产品规则/证据边界",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-012",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "冗余",
+      "issueType": "空泛开场",
+      "matchType": "lexical",
+      "patterns": [
+        "首先我想说的是",
+        "在这里我想表达一下",
+        "大家都知道",
+        "众所周知"
+      ],
+      "reason": "空泛开场占用注意力，但没有提供结论或背景信息。",
+      "suggestion": "删除套话，直接给出核心结论。",
+      "replacements": [],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "low",
+      "priority": 60,
+      "sourceRef": "产品规则/开场效率",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-019",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "行动",
+      "issueType": "行动不可执行",
+      "matchType": "lexical",
+      "patterns": [
+        "持续关注",
+        "继续优化",
+        "加强沟通",
+        "提高重视",
+        "后续跟进"
+      ],
+      "reason": "行动描述缺少负责人、对象、时间或完成标准，无法真正执行。",
+      "suggestion": "补充谁在什么时间前完成什么动作，以及如何验收。",
+      "replacements": [],
+      "scenarios": [
+        "general",
+        "report",
+        "retrospective"
+      ],
+      "severity": "high",
+      "priority": 92,
+      "sourceRef": "产品规则/行动闭环",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-023",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "语气",
+      "issueType": "过度自我否定",
+      "matchType": "lexical",
+      "patterns": [
+        "我不太懂",
+        "我可能说得不对",
+        "我只是随便想想",
+        "这个很简单"
+      ],
+      "reason": "不必要的自我弱化会降低观点可信度，也可能贬低实际工作复杂度。",
+      "suggestion": "直接陈述当前判断和依据，并说明尚未确认的部分。",
+      "replacements": [
+        "我的判断是",
+        "基于目前信息"
+      ],
+      "scenarios": [
+        "general",
+        "interview",
+        "report"
+      ],
+      "severity": "medium",
+      "priority": 68,
+      "sourceRef": "产品规则/专业语气",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "GEN-024",
+      "sourceType": "ai_generated",
+      "domain": "general",
+      "category": "语气",
+      "issueType": "归责性表达",
+      "matchType": "lexical",
+      "patterns": [
+        "都是因为他们",
+        "对方不配合",
+        "研发不给力",
+        "产品没想清楚"
+      ],
+      "reason": "直接归责容易引发防御情绪，也无法推动问题解决。",
+      "suggestion": "描述可观察事实、影响和需要协作解决的具体事项。",
+      "replacements": [],
+      "scenarios": [
+        "general",
+        "interview",
+        "report",
+        "retrospective"
+      ],
+      "severity": "high",
+      "priority": 90,
+      "sourceRef": "产品规则/建设性表达",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "INT-003",
+      "sourceType": "ai_generated",
+      "domain": "interview",
+      "category": "岗位动机",
+      "issueType": "动机泛化",
+      "matchType": "lexical",
+      "patterns": [
+        "贵公司平台很好",
+        "行业前景很好",
+        "想学习成长",
+        "岗位很有挑战"
+      ],
+      "reason": "通用动机可以套用到多数公司，无法体现真实选择依据。",
+      "suggestion": "结合 JD 职责、业务阶段和个人经历说明具体匹配点。",
+      "replacements": [],
+      "scenarios": [
+        "interview"
+      ],
+      "severity": "high",
+      "priority": 92,
+      "sourceRef": "产品规则/岗位动机",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "INT-016",
+      "sourceType": "ai_generated",
+      "domain": "interview",
+      "category": "弱点回答",
+      "issueType": "伪装式缺点",
+      "matchType": "lexical",
+      "patterns": [
+        "过于追求完美",
+        "太追求完美",
+        "工作太认真",
+        "不太会拒绝别人"
+      ],
+      "reason": "模板化的优点式缺点缺少真实性，也无法体现自我认知。",
+      "suggestion": "选择真实但可管理的问题，并说明影响、改进动作和当前变化。",
+      "replacements": [],
+      "scenarios": [
+        "interview"
+      ],
+      "severity": "medium",
+      "priority": 87,
+      "sourceRef": "产品规则/弱点回答",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    },
+    {
+      "id": "RET-006",
+      "sourceType": "ai_generated",
+      "domain": "retrospective",
+      "category": "行动",
+      "issueType": "改进措施过于抽象",
+      "matchType": "lexical",
+      "patterns": [
+        "加强管理",
+        "提高意识",
+        "吸取教训",
+        "避免再次发生"
+      ],
+      "reason": "抽象要求无法转化为稳定行为，也无法验收是否执行。",
+      "suggestion": "把改进措施写成具体流程、工具、检查点或负责人动作。",
+      "replacements": [],
+      "scenarios": [
+        "retrospective"
+      ],
+      "severity": "high",
+      "priority": 97,
+      "sourceRef": "产品规则/改进措施",
+      "reviewStatus": "sample_review",
+      "version": "0.1.0"
+    }
+  ],
+  "advisoryRuleCatalog": {
+    "description": "结构和语义规则仅供能力目录展示，不参与本地精确匹配。",
+    "structural": [
+      {
+        "id": "RPT-001",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "汇报结构",
+        "issueType": "缺少结论摘要",
+        "matchType": "structural",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "high",
+        "priority": 98,
+        "sourceRef": "产品规则/汇报结论",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RPT-002",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "目标",
+        "issueType": "目标口径缺失",
+        "matchType": "structural",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "high",
+        "priority": 94,
+        "sourceRef": "产品规则/汇报目标",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RPT-005",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "风险",
+        "issueType": "风险缺少影响评估",
+        "matchType": "structural",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "high",
+        "priority": 96,
+        "sourceRef": "产品规则/风险表达",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RPT-006",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "行动",
+        "issueType": "下一步缺少负责人和时间",
+        "matchType": "structural",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "high",
+        "priority": 96,
+        "sourceRef": "产品规则/行动闭环",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RPT-008",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "决策",
+        "issueType": "决策项与信息项混合",
+        "matchType": "structural",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "high",
+        "priority": 94,
+        "sourceRef": "产品规则/决策清晰度",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RPT-010",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "优先级",
+        "issueType": "重点过多",
+        "matchType": "structural",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "medium",
+        "priority": 82,
+        "sourceRef": "产品规则/优先级表达",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-013",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "结构",
+        "issueType": "结论后置",
+        "matchType": "structural",
+        "scenarios": [
+          "general",
+          "interview",
+          "report"
+        ],
+        "severity": "high",
+        "priority": 90,
+        "sourceRef": "产品规则/结论先行",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-014",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "结构",
+        "issueType": "要点未分层",
+        "matchType": "structural",
+        "scenarios": [
+          "general",
+          "interview",
+          "report",
+          "retrospective"
+        ],
+        "severity": "medium",
+        "priority": 82,
+        "sourceRef": "产品规则/信息分层",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-015",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "结构",
+        "issueType": "逻辑关系缺失",
+        "matchType": "structural",
+        "scenarios": [
+          "general",
+          "interview",
+          "report",
+          "retrospective"
+        ],
+        "severity": "high",
+        "priority": 88,
+        "sourceRef": "产品规则/逻辑关系",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-016",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "结构",
+        "issueType": "一句承载过多信息",
+        "matchType": "structural",
+        "scenarios": [
+          "general",
+          "interview",
+          "report",
+          "retrospective"
+        ],
+        "severity": "medium",
+        "priority": 72,
+        "sourceRef": "产品规则/句子负载",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-001",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "自我介绍",
+        "issueType": "缺少岗位定位",
+        "matchType": "structural",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 94,
+        "sourceRef": "产品规则/面试自我介绍",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-002",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "自我介绍",
+        "issueType": "经历流水账",
+        "matchType": "structural",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "medium",
+        "priority": 84,
+        "sourceRef": "产品规则/经历筛选",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-005",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "回答结构",
+        "issueType": "情境过长",
+        "matchType": "structural",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "medium",
+        "priority": 86,
+        "sourceRef": "产品规则/STAR结构",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-006",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "回答结构",
+        "issueType": "任务目标缺失",
+        "matchType": "structural",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 90,
+        "sourceRef": "产品规则/STAR任务",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-015",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "失败复盘",
+        "issueType": "失败案例没有学习闭环",
+        "matchType": "structural",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 93,
+        "sourceRef": "产品规则/失败复盘",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RET-001",
+        "sourceType": "ai_generated",
+        "domain": "retrospective",
+        "category": "复盘结构",
+        "issueType": "目标与结果未对齐",
+        "matchType": "structural",
+        "scenarios": [
+          "retrospective"
+        ],
+        "severity": "high",
+        "priority": 98,
+        "sourceRef": "产品规则/目标结果对齐",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RET-007",
+        "sourceType": "ai_generated",
+        "domain": "retrospective",
+        "category": "行动",
+        "issueType": "行动缺少验证方式",
+        "matchType": "structural",
+        "scenarios": [
+          "retrospective"
+        ],
+        "severity": "high",
+        "priority": 95,
+        "sourceRef": "产品规则/改进验证",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RET-009",
+        "sourceType": "ai_generated",
+        "domain": "retrospective",
+        "category": "时间线",
+        "issueType": "关键事件顺序不清",
+        "matchType": "structural",
+        "scenarios": [
+          "retrospective"
+        ],
+        "severity": "medium",
+        "priority": 88,
+        "sourceRef": "产品规则/事件时间线",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      }
+    ],
+    "semantic": [
+      {
+        "id": "RPT-003",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "进展",
+        "issueType": "活动代替结果",
+        "matchType": "semantic",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "medium",
+        "priority": 88,
+        "sourceRef": "产品规则/进展结果化",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RPT-004",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "进展",
+        "issueType": "完成比例无范围",
+        "matchType": "semantic",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "medium",
+        "priority": 84,
+        "sourceRef": "产品规则/进度口径",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RPT-007",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "协作",
+        "issueType": "支持诉求不明确",
+        "matchType": "semantic",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "high",
+        "priority": 95,
+        "sourceRef": "产品规则/支持诉求",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RPT-009",
+        "sourceType": "ai_generated",
+        "domain": "report",
+        "category": "指标",
+        "issueType": "指标变化无解释",
+        "matchType": "semantic",
+        "scenarios": [
+          "report"
+        ],
+        "severity": "medium",
+        "priority": 86,
+        "sourceRef": "产品规则/指标解释",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-007",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "模糊表达",
+        "issueType": "指代不清",
+        "matchType": "semantic",
+        "scenarios": [
+          "general",
+          "interview",
+          "report",
+          "retrospective"
+        ],
+        "severity": "medium",
+        "priority": 76,
+        "sourceRef": "产品规则/指代清晰度",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-011",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "冗余",
+        "issueType": "同义重复",
+        "matchType": "semantic",
+        "scenarios": [
+          "general",
+          "interview",
+          "report",
+          "retrospective"
+        ],
+        "severity": "medium",
+        "priority": 74,
+        "sourceRef": "产品规则/信息密度",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-017",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "证据",
+        "issueType": "观点缺少依据",
+        "matchType": "semantic",
+        "scenarios": [
+          "general",
+          "interview",
+          "report",
+          "retrospective"
+        ],
+        "severity": "high",
+        "priority": 92,
+        "sourceRef": "产品规则/证据强度",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-018",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "证据",
+        "issueType": "指标缺少基准",
+        "matchType": "semantic",
+        "scenarios": [
+          "general",
+          "interview",
+          "report",
+          "retrospective"
+        ],
+        "severity": "medium",
+        "priority": 86,
+        "sourceRef": "产品规则/指标基准",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-020",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "责任",
+        "issueType": "主体缺失",
+        "matchType": "semantic",
+        "scenarios": [
+          "general",
+          "interview",
+          "report",
+          "retrospective"
+        ],
+        "severity": "medium",
+        "priority": 80,
+        "sourceRef": "产品规则/主体明确",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-021",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "术语",
+        "issueType": "术语未解释",
+        "matchType": "semantic",
+        "scenarios": [
+          "general",
+          "interview",
+          "report"
+        ],
+        "severity": "low",
+        "priority": 58,
+        "sourceRef": "产品规则/术语可理解性",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "GEN-022",
+        "sourceType": "ai_generated",
+        "domain": "general",
+        "category": "边界",
+        "issueType": "事实与推测混合",
+        "matchType": "semantic",
+        "scenarios": [
+          "general",
+          "interview",
+          "report",
+          "retrospective"
+        ],
+        "severity": "high",
+        "priority": 94,
+        "sourceRef": "产品规则/事实判断边界",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-004",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "问题理解",
+        "issueType": "未直接回答问题",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 98,
+        "sourceRef": "产品规则/问题对齐",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-007",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "个人贡献",
+        "issueType": "团队与个人贡献混淆",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 96,
+        "sourceRef": "产品规则/个人贡献",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-008",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "个人贡献",
+        "issueType": "行动缺少决策理由",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 91,
+        "sourceRef": "产品规则/决策能力",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-009",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "结果证据",
+        "issueType": "结果未量化",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 97,
+        "sourceRef": "产品规则/结果量化",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-010",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "结果证据",
+        "issueType": "结果归因过度",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 94,
+        "sourceRef": "产品规则/归因边界",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-011",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "简历一致性",
+        "issueType": "回答与简历冲突",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 100,
+        "sourceRef": "产品规则/简历一致性",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-012",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "JD匹配",
+        "issueType": "未回应核心能力",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 99,
+        "sourceRef": "产品规则/JD能力映射",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-013",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "JD匹配",
+        "issueType": "关键词堆砌",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "medium",
+        "priority": 88,
+        "sourceRef": "产品规则/JD证据化",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-014",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "真实性",
+        "issueType": "材料未提供的事实",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 100,
+        "sourceRef": "产品规则/禁止事实编造",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-017",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "冲突处理",
+        "issueType": "单方面归责",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 92,
+        "sourceRef": "产品规则/冲突处理",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-018",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "追问应对",
+        "issueType": "追问重复原答案",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "medium",
+        "priority": 89,
+        "sourceRef": "产品规则/自适应追问",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-019",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "保密边界",
+        "issueType": "披露敏感信息",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "high",
+        "priority": 99,
+        "sourceRef": "产品规则/保密表达",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "INT-020",
+        "sourceType": "ai_generated",
+        "domain": "interview",
+        "category": "职业规划",
+        "issueType": "规划与岗位脱节",
+        "matchType": "semantic",
+        "scenarios": [
+          "interview"
+        ],
+        "severity": "medium",
+        "priority": 80,
+        "sourceRef": "产品规则/职业规划",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RET-002",
+        "sourceType": "ai_generated",
+        "domain": "retrospective",
+        "category": "事实",
+        "issueType": "事实与评价混合",
+        "matchType": "semantic",
+        "scenarios": [
+          "retrospective"
+        ],
+        "severity": "high",
+        "priority": 96,
+        "sourceRef": "产品规则/事实判断分离",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RET-003",
+        "sourceType": "ai_generated",
+        "domain": "retrospective",
+        "category": "归因",
+        "issueType": "把现象当根因",
+        "matchType": "semantic",
+        "scenarios": [
+          "retrospective"
+        ],
+        "severity": "high",
+        "priority": 98,
+        "sourceRef": "产品规则/根因分析",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RET-004",
+        "sourceType": "ai_generated",
+        "domain": "retrospective",
+        "category": "归因",
+        "issueType": "单一原因归因",
+        "matchType": "semantic",
+        "scenarios": [
+          "retrospective"
+        ],
+        "severity": "high",
+        "priority": 94,
+        "sourceRef": "产品规则/多因素归因",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RET-005",
+        "sourceType": "ai_generated",
+        "domain": "retrospective",
+        "category": "责任",
+        "issueType": "复盘变成追责",
+        "matchType": "semantic",
+        "scenarios": [
+          "retrospective"
+        ],
+        "severity": "high",
+        "priority": 96,
+        "sourceRef": "产品规则/无责复盘",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RET-008",
+        "sourceType": "ai_generated",
+        "domain": "retrospective",
+        "category": "经验沉淀",
+        "issueType": "成功经验不可复用",
+        "matchType": "semantic",
+        "scenarios": [
+          "retrospective"
+        ],
+        "severity": "medium",
+        "priority": 86,
+        "sourceRef": "产品规则/经验复用",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      },
+      {
+        "id": "RET-010",
+        "sourceType": "ai_generated",
+        "domain": "retrospective",
+        "category": "反事实",
+        "issueType": "缺少替代方案反思",
+        "matchType": "semantic",
+        "scenarios": [
+          "retrospective"
+        ],
+        "severity": "medium",
+        "priority": 84,
+        "sourceRef": "产品规则/反事实分析",
+        "reviewStatus": "sample_review",
+        "version": "0.1.0"
+      }
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+import {
+  AudioLines,
+  CalendarRange,
+  House,
+  MessageSquareText,
+  Settings2,
+  Sparkles,
+  UserRoundSearch,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import type { NavigationItem, SectionId } from "./types";
+
+const navigation: NavigationItem[] = [
+  { id: "home", label: "首页", shortLabel: "首页", icon: House },
+  { id: "workspace", label: "表达工作台", shortLabel: "表达", icon: MessageSquareText },
+  { id: "interview", label: "面试专区", shortLabel: "面试", icon: UserRoundSearch },
+  { id: "training", label: "训练计划", shortLabel: "训练", icon: CalendarRange },
+  { id: "reports", label: "录音与报告", shortLabel: "报告", icon: AudioLines },
+  { id: "settings", label: "设置", shortLabel: "设置", icon: Settings2 },
+];
+
+export function AppShell({
+  active,
+  onNavigate,
+  saveState,
+  children,
+}: {
+  active: SectionId;
+  onNavigate: (section: SectionId) => void;
+  saveState: string;
+  children: ReactNode;
+}) {
+  const activeItem = navigation.find((item) => item.id === active)!;
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <button className="brand" type="button" onClick={() => onNavigate("home")}>
+          <span className="brand-mark"><Sparkles size={17} /></span>
+          <span>
+            <strong>言序</strong>
+            <small>表达教练</small>
+          </span>
+        </button>
+
+        <nav className="primary-navigation" aria-label="一级导航">
+          {navigation.map(({ id, label, icon: Icon }) => (
+            <button
+              className={active === id ? "nav-item active" : "nav-item"}
+              type="button"
+              key={id}
+              onClick={() => onNavigate(id)}
+            >
+              <Icon size={18} strokeWidth={1.7} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="streak-number">12</div>
+          <div>
+            <strong>连续训练天数</strong>
+            <span>{saveState}</span>
+          </div>
+        </div>
+      </aside>
+
+      <div className="mobile-topbar">
+        <button className="mobile-brand" type="button" onClick={() => onNavigate("home")}>
+          <Sparkles size={16} /> 言序
+        </button>
+        <span>{activeItem.label}</span>
+      </div>
+
+      <main className="main-content">{children}</main>
+
+      <nav className="mobile-navigation" aria-label="移动端一级导航">
+        {navigation.map(({ id, shortLabel, icon: Icon }) => (
+          <button
+            className={active === id ? "mobile-nav-item active" : "mobile-nav-item"}
+            type="button"
+            key={id}
+            onClick={() => onNavigate(id)}
+          >
+            <Icon size={19} strokeWidth={1.8} />
+            <span>{shortLabel}</span>
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}

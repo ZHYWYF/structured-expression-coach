@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+target/
+src-tauri/target/
+.DS_Store
+*.log
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+.env
+.env.*
+!.env.example
+flux/.local
+flux/changes
