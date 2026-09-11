@@ -12,7 +12,9 @@ cd "$project_root"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}"
 
-corepack enable
+if ! command -v pnpm >/dev/null 2>&1; then
+  corepack prepare pnpm@9.12.3 --activate
+fi
 pnpm install --frozen-lockfile
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
