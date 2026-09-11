@@ -34,6 +34,8 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Build universal macOS app
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
         run: bash scripts/build-macos.sh
 
       - name: Upload installer

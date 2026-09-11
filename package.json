@@ -1,7 +1,7 @@
 {
   "name": "structured-expression-coach",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packageManager": "pnpm@9.12.3",
   "type": "module",
   "scripts": {

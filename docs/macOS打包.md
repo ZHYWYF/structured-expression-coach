@@ -17,7 +17,7 @@ bash scripts/build-macos.sh
 
 也可以直接双击 `scripts/构建言序安装包.command`。脚本会检查所需环境，构建完成后自动打开 `.dmg` 所在目录。
 
-当前脚本生成未使用 Apple Developer 证书签名的内部测试包。首次打开时，如果 macOS 阻止运行，可在“系统设置 → 隐私与安全性”中确认打开。
+当前脚本生成使用 ad-hoc 临时签名的内部测试包，用于避免未签名 Apple Silicon 应用被 macOS 判定为损坏。它不是 Apple Developer ID 签名，也没有经过 Apple 公证，因此首次打开时仍可能需要在“系统设置 → 隐私与安全性”中确认打开。
 
 ## 远程构建
 
