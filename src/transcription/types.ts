@@ -1,5 +1,5 @@
 export type TranscriptionMode = "realtime" | "batch";
-export type TranscriptionEngine = "mock-local" | "whisper-cpp" | "sherpa-onnx" | "online";
+export type TranscriptionEngine = "whisper-cpp" | "sherpa-onnx" | "online";
 
 export interface TranscriptSegment {
   id: string;

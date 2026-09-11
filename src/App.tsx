@@ -68,6 +68,7 @@ export default function App() {
       active={activeSection}
       onNavigate={navigate}
       saveState={controller.persistenceError ? "保存异常" : controller.isSaving ? "正在保存" : controller.isHydrated ? "已保存到本地" : "正在载入"}
+      completedTrainingCount={controller.trainingPlans.flatMap((plan) => plan.tasks).filter((task) => task.status === "done").length}
     >
       {renderSection()}
     </AppShell>

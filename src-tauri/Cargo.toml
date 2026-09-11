@@ -1,6 +1,6 @@
 [package]
 name = "structured-expression-coach"
-version = "0.1.1"
+version = "0.2.0"
 description = "本地优先的结构化表达训练应用"
 authors = ["言序"]
 edition = "2021"
@@ -17,3 +17,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-sql = { version = "2.4.1", features = ["sqlite"] }
+tauri-plugin-http = "2.5"
+keyring = "3.6"

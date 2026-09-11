@@ -46,7 +46,7 @@ export function HomePage({ controller, onNavigate }: { controller: WorkspaceCont
         </div>
         <div className="daily-progress" aria-label="本周训练进度">
           <span>本周训练</span>
-          <strong>{completedTasks}<small>/{taskTotal || 1}</small></strong>
+          <strong>{completedTasks}<small>/{taskTotal}</small></strong>
           <div className="progress-track"><i style={{ width: `${taskTotal ? (completedTasks / taskTotal) * 100 : 0}%` }} /></div>
           <em>{completedTasks === taskTotal && taskTotal ? "本周计划已完成" : `还有 ${Math.max(0, taskTotal - completedTasks)} 项训练待完成`}</em>
         </div>

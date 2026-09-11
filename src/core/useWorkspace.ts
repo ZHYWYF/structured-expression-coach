@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createDemoWorkspace } from "./demoData";
+import { createEmptyWorkspace } from "./defaultWorkspace";
 import { createRepository, type Repository } from "./storage";
 import type {
   FeedbackSuggestion,
@@ -12,6 +12,7 @@ import type {
   Statement,
   SuggestionStatus,
   TrainingTaskStatus,
+  TrainingPlan,
   WorkspacePage,
   WorkspacePreferences,
   WorkspaceState,
@@ -38,8 +39,12 @@ export interface WorkspaceController extends WorkspaceState {
   addMessage(input: Omit<Message, "id" | "sessionId" | "createdAt">, sessionId?: string): Message | null;
   setSuggestionStatus(suggestionId: string, status: SuggestionStatus, sessionId?: string): void;
   updateTrainingTask(planId: string, taskId: string, status: TrainingTaskStatus): void;
+  upsertTrainingPlan(plan: TrainingPlan): void;
+  deleteTrainingPlan(planId: string): void;
   upsertRecordingTask(task: RecordingTask): void;
+  deleteRecordingTask(taskId: string): void;
   updatePreferences(patch: Partial<WorkspacePreferences>): void;
+  replaceWorkspace(workspace: WorkspaceState): void;
   clearPersistenceError(): void;
   flush(): Promise<void>;
 }
@@ -111,7 +116,7 @@ function errorMessage(error: unknown): string {
 
 export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceController {
   const initialState = useMemo(
-    () => options.initialState ?? createDemoWorkspace(),
+    () => options.initialState ?? createEmptyWorkspace(),
     [options.initialState],
   );
   const [workspace, setWorkspace] = useState<WorkspaceState>(initialState);
@@ -215,11 +220,18 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
   const deleteSession = useCallback(
     (sessionId: string) =>
       mutate((current) => {
+        const deletedAt = new Date().toISOString();
         const sessions = current.sessions.filter((session) => session.id !== sessionId);
+        const relatedRecordings = current.recordingTasks.filter((task) => task.sessionId === sessionId);
         return {
           ...current,
           sessions,
           recordingTasks: current.recordingTasks.filter((task) => task.sessionId !== sessionId),
+          tombstones: [
+            ...current.tombstones.filter((item) => item.entityId !== sessionId && !relatedRecordings.some((task) => task.id === item.entityId)),
+            { entityType: "session", entityId: sessionId, deletedAt },
+            ...relatedRecordings.map((task) => ({ entityType: "recording" as const, entityId: task.id, deletedAt })),
+          ],
           selectedSessionId:
             current.selectedSessionId === sessionId
               ? (sessions[0]?.id ?? null)
@@ -336,6 +348,26 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
     [mutate],
   );
 
+  const upsertTrainingPlan = useCallback(
+    (plan: TrainingPlan) =>
+      mutate((current) => ({
+        ...current,
+        trainingPlans: current.trainingPlans.some((item) => item.id === plan.id)
+          ? current.trainingPlans.map((item) => item.id === plan.id ? plan : item)
+          : [plan, ...current.trainingPlans],
+      })),
+    [mutate],
+  );
+
+  const deleteTrainingPlan = useCallback(
+    (planId: string) => mutate((current) => ({
+      ...current,
+      trainingPlans: current.trainingPlans.filter((plan) => plan.id !== planId),
+      tombstones: [...current.tombstones.filter((item) => item.entityId !== planId), { entityType: "training-plan", entityId: planId, deletedAt: new Date().toISOString() }],
+    })),
+    [mutate],
+  );
+
   const upsertRecordingTask = useCallback(
     (task: RecordingTask) =>
       mutate((current) => {
@@ -355,12 +387,30 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
     [mutate],
   );
 
+  const deleteRecordingTask = useCallback(
+    (taskId: string) => mutate((current) => ({
+      ...current,
+      recordingTasks: current.recordingTasks.filter((task) => task.id !== taskId),
+      tombstones: [...current.tombstones.filter((item) => item.entityId !== taskId), { entityType: "recording", entityId: taskId, deletedAt: new Date().toISOString() }],
+      sessions: current.sessions.map((session) => ({
+        ...session,
+        recordingTaskIds: session.recordingTaskIds.filter((id) => id !== taskId),
+      })),
+    })),
+    [mutate],
+  );
+
   const updatePreferences = useCallback(
     (patch: Partial<WorkspacePreferences>) =>
       mutate((current) => ({
         ...current,
         preferences: { ...current.preferences, ...patch },
       })),
+    [mutate],
+  );
+
+  const replaceWorkspace = useCallback(
+    (next: WorkspaceState) => mutate(() => ({ ...next, version: 2 })),
     [mutate],
   );
 
@@ -399,8 +449,12 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
     addMessage,
     setSuggestionStatus,
     updateTrainingTask,
+    upsertTrainingPlan,
+    deleteTrainingPlan,
     upsertRecordingTask,
+    deleteRecordingTask,
     updatePreferences,
+    replaceWorkspace,
     clearPersistenceError: () => setPersistenceError(null),
     flush,
   };

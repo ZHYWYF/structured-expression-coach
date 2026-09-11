@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDemoWorkspace } from "./demoData";
+import { createEmptyWorkspace } from "./defaultWorkspace";
+import type { PracticeSession } from "./types";
 
 const tauriMocks = vi.hoisted(() => ({
   isTauri: vi.fn(() => false),
@@ -15,6 +16,18 @@ vi.mock("@tauri-apps/plugin-sql", () => ({
 }));
 
 import { createLocalStorageRepository, createRepository } from "./storage";
+
+function createTestWorkspace() {
+  const workspace = createEmptyWorkspace();
+  const now = new Date().toISOString();
+  const session = (id: string, title: string): PracticeSession => ({
+    id, title, kind: "practice", scenarioId: "scenario-weekly-report", status: "draft",
+    draftText: "", statements: [], messages: [], feedback: [], recordingTaskIds: [], materials: [], createdAt: now, updatedAt: now,
+  });
+  workspace.sessions = [session("session-one", "会话一"), session("session-two", "会话二")];
+  workspace.selectedSessionId = "session-one";
+  return workspace;
+}
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
@@ -60,19 +73,19 @@ describe("LocalStorageRepository", () => {
 
   it("首次初始化时写入完整工作区，并保持会话相互独立", async () => {
     const repository = createLocalStorageRepository();
-    const seed = createDemoWorkspace();
+    const seed = createTestWorkspace();
 
     await repository.initialize(seed);
     const loaded = await repository.loadWorkspace();
 
     expect(loaded).toEqual(seed);
-    expect(await repository.getSession("session-interview-growth")).toEqual(seed.sessions[0]);
-    expect(await repository.getSession("session-weekly-report")).toEqual(seed.sessions[1]);
+    expect(await repository.getSession("session-one")).toEqual(seed.sessions[0]);
+    expect(await repository.getSession("session-two")).toEqual(seed.sessions[1]);
   });
 
   it("保存工作区后删除已移除的会话，并修正失效的选中项", async () => {
     const repository = createLocalStorageRepository();
-    const seed = createDemoWorkspace();
+    const seed = createTestWorkspace();
     await repository.initialize(seed);
 
     const remainingSession = seed.sessions[1];
@@ -97,7 +110,7 @@ describe("LocalStorageRepository", () => {
 
   it("会话增删改不会泄漏调用方对象引用", async () => {
     const repository = createLocalStorageRepository();
-    const seed = createDemoWorkspace();
+    const seed = createTestWorkspace();
     await repository.initialize(seed);
 
     const added = {
@@ -120,18 +133,18 @@ describe("LocalStorageRepository", () => {
 
   it("已有工作区存在时初始化不会覆盖用户数据", async () => {
     const repository = createLocalStorageRepository();
-    const seed = createDemoWorkspace();
+    const seed = createTestWorkspace();
     await repository.initialize(seed);
 
     const changed = { ...seed, currentPage: "settings" as const };
     await repository.saveWorkspace(changed);
-    await repository.initialize(createDemoWorkspace());
+    await repository.initialize(createTestWorkspace());
 
     expect((await repository.loadWorkspace())?.currentPage).toBe("settings");
   });
 
   it("非 Tauri 环境使用本地存储仓储", async () => {
-    const repository = await createRepository(createDemoWorkspace());
+    const repository = await createRepository(createTestWorkspace());
 
     expect(repository.kind).toBe("localStorage");
     expect(await repository.loadWorkspace()).not.toBeNull();
@@ -143,7 +156,7 @@ describe("LocalStorageRepository", () => {
     tauriMocks.loadDatabase.mockRejectedValueOnce(new Error("database unavailable"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    const repository = await createRepository(createDemoWorkspace());
+    const repository = await createRepository(createTestWorkspace());
 
     expect(repository.kind).toBe("localStorage");
     expect(await repository.loadWorkspace()).not.toBeNull();

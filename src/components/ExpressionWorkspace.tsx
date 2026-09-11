@@ -1,10 +1,11 @@
-import { CornerDownLeft, FileText, MoreHorizontal, Sparkles } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { Check, CornerDownLeft, FileText, Mic, MicOff, Search, Sparkles, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WorkspaceController } from "../core/useWorkspace";
 import type { Session } from "../core/types";
 import { analyzeText } from "../knowledge";
 import type { AnalysisFinding, KnowledgeScenario } from "../knowledge";
 import { NewSessionButton, PageHeader } from "./ui";
+import { localTranscriptionRuntime } from "../transcription/localRuntime";
 
 type AnalysisMode = "汇报" | "复盘";
 type FindingTone = "filler" | "vague" | "structure";
@@ -53,7 +54,21 @@ function HighlightedText({ text, findings }: { text: string; findings: AnalysisF
 
 export function ExpressionWorkspace({ controller }: { controller: WorkspaceController }) {
   const [savedText, setSavedText] = useState("");
-  const sessions = controller.sessions.filter((session) => session.kind !== "interview");
+  const [search, setSearch] = useState("");
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("");
+  const microphoneRef = useRef<{ stream: MediaStream; context: AudioContext; processor: ScriptProcessorNode; source: MediaStreamAudioSourceNode; chunks: Float32Array[]; sampleRate: number; busy: boolean } | null>(null);
+  useEffect(() => () => {
+    const microphone = microphoneRef.current;
+    if (!microphone) return;
+    microphone.processor.disconnect();
+    microphone.source.disconnect();
+    microphone.stream.getTracks().forEach((track) => track.stop());
+    void microphone.context.close();
+    microphoneRef.current = null;
+  }, []);
+  const sessions = controller.sessions.filter((session) => session.kind !== "interview" && (!search.trim() || `${session.title}\n${session.draftText}`.toLowerCase().includes(search.trim().toLowerCase())));
   const selectedSession = controller.selectedSession?.kind !== "interview"
     ? controller.selectedSession
     : sessions[0] ?? null;
@@ -61,7 +76,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
   const mode: AnalysisMode = selectedScenario?.category === "meeting" ? "复盘" : "汇报";
   const text = selectedSession?.draftText ?? "";
   const scenario: KnowledgeScenario = mode === "复盘" ? "retrospective" : "report";
-  const findings = useMemo(() => analyzeText(text, scenario), [scenario, text]);
+  const findings = useMemo(() => analyzeText(text, scenario).filter((item) => !dismissed.includes(`${item.ruleId}:${item.range.start}:${item.matchedText}`)), [dismissed, scenario, text]);
 
   const newSession = () => {
     const scenarioId = controller.scenarios.find((item) =>
@@ -104,8 +119,71 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
       },
       selectedSession.id,
     );
-    controller.updateSession(selectedSession.id, (session) => ({ ...session, status: "completed" }));
+    const score = Math.max(60, 96 - findings.length * 4);
+    controller.updateSession(selectedSession.id, (session) => ({ ...session, status: "completed", report: {
+      id: `report-${crypto.randomUUID()}`, sessionId: session.id, title: `${session.title}复盘`, overallScore: score,
+      dimensions: [
+        { key: "structure", label: "结构", score: Math.max(60, score - findings.filter((item) => findingTone(item) === "structure").length * 3), summary: "根据本地结构规则生成" },
+        { key: "clarity", label: "清晰度", score, summary: "根据模糊表达和句长生成" },
+        { key: "evidence", label: "证据", score, summary: "建议用事实和数字支撑关键结论" },
+        { key: "brevity", label: "简洁度", score: Math.max(60, score - findings.filter((item) => findingTone(item) === "filler").length * 3), summary: "根据口头禅和冗余表达生成" },
+        { key: "confidence", label: "自信度", score, summary: "本地文字分析暂不判断语音状态" },
+      ], strengths: findings.length ? ["原文已完整保留，可逐项修正"] : ["未发现已知的高频表达问题"],
+      improvements: findings.slice(0, 3).map((item) => `${item.issueType}：${item.suggestion}`),
+      actionItems: findings.slice(0, 2).map((item) => item.suggestion), generatedAt: new Date().toISOString(),
+    } }));
     setSavedText(text);
+  };
+
+  const acceptFinding = (finding: AnalysisFinding) => {
+    if (!selectedSession) return;
+    const replacement = finding.replacements[0];
+    if (!replacement) return;
+    controller.updateSessionText(`${text.slice(0, finding.range.start)}${replacement}${text.slice(finding.range.end)}`, selectedSession.id);
+  };
+
+  const processVoiceChunks = async (force = false) => {
+    const microphone = microphoneRef.current;
+    if (!microphone || microphone.busy || (!force && microphone.chunks.reduce((sum, item) => sum + item.length, 0) < microphone.sampleRate * 6)) return;
+    const sourceLength = microphone.chunks.reduce((sum, item) => sum + item.length, 0);
+    const source = new Float32Array(sourceLength); let offset = 0;
+    for (const chunk of microphone.chunks) { source.set(chunk, offset); offset += chunk.length; }
+    microphone.chunks = []; microphone.busy = true;
+    const targetLength = Math.max(1, Math.round(source.length * 16_000 / microphone.sampleRate));
+    const samples = new Float32Array(targetLength);
+    for (let index = 0; index < targetLength; index += 1) {
+      const position = index * microphone.sampleRate / 16_000;
+      const before = Math.floor(position); const after = Math.min(source.length - 1, before + 1); const ratio = position - before;
+      samples[index] = source[before] * (1 - ratio) + source[after] * ratio;
+    }
+    const model = controller.preferences.installedModels.find((item) => item.status === "ready");
+    try {
+      if (!model) throw new Error("请先在设置中下载本地转写模型");
+      setVoiceStatus("正在识别刚才的语音…");
+      const result = await localTranscriptionRuntime.transcribe(model.id, samples);
+      if (result.text && selectedSession) controller.updateSessionText(`${controller.sessions.find((item) => item.id === selectedSession.id)?.draftText ?? ""}${result.text}`, selectedSession.id);
+      setVoiceStatus("正在聆听");
+    } catch (error) { setVoiceStatus(error instanceof Error ? error.message : "语音识别失败"); }
+    finally { if (microphoneRef.current) microphoneRef.current.busy = false; }
+  };
+
+  const toggleMicrophone = async () => {
+    if (microphoneRef.current) {
+      const current = microphoneRef.current;
+      current.processor.disconnect(); current.source.disconnect(); current.stream.getTracks().forEach((track) => track.stop());
+      setIsListening(false); setVoiceStatus("正在完成最后一段识别…");
+      await processVoiceChunks(true); await current.context.close(); microphoneRef.current = null; setVoiceStatus("语音输入已结束");
+      return;
+    }
+    if (!selectedSession) return;
+    if (!controller.preferences.installedModels.some((item) => item.status === "ready")) { setVoiceStatus("请先在设置中下载本地转写模型"); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const context = new AudioContext(); const source = context.createMediaStreamSource(stream); const processor = context.createScriptProcessor(4096, 1, 1);
+      microphoneRef.current = { stream, context, processor, source, chunks: [], sampleRate: context.sampleRate, busy: false };
+      processor.onaudioprocess = (event) => { const current = microphoneRef.current; if (!current) return; current.chunks.push(event.inputBuffer.getChannelData(0).slice()); void processVoiceChunks(); };
+      source.connect(processor); processor.connect(context.destination); setIsListening(true); setVoiceStatus("正在聆听，每约 6 秒更新一次文字");
+    } catch (error) { setVoiceStatus(error instanceof Error ? error.message : "无法访问麦克风"); }
   };
 
   return (
@@ -120,6 +198,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
       <div className="studio-layout">
         <aside className="session-rail">
           <div className="session-rail-title"><span>历史会话</span><strong>{sessions.length}</strong></div>
+          <label className="session-search"><Search size={13} /><input value={search} placeholder="搜索标题或内容" onChange={(event) => setSearch(event.target.value)} /></label>
           <div className="session-list">
             {sessions.map((session) => (
               <button
@@ -144,7 +223,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
                 <button className={mode === item ? "active" : ""} type="button" key={item} onClick={() => changeMode(item)}>{item}</button>
               ))}
             </div>
-            <button className="icon-button" type="button" aria-label="更多选项"><MoreHorizontal size={19} /></button>
+            <button className={isListening ? "icon-button recording" : "icon-button"} type="button" aria-label={isListening ? "停止语音输入" : "开始语音输入"} onClick={() => void toggleMicrophone()}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button>
           </div>
           <textarea
             className="expression-input"
@@ -154,7 +233,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
             placeholder={selectedSession ? "先写下你最想让对方记住的结论……" : "新建一个会话后开始表达……"}
           />
           <div className="editor-footer">
-            <span>{text.length} 字 · {findings.length} 处可改善</span>
+            <span>{voiceStatus || `${text.length} 字 · ${findings.length} 处可改善`}</span>
             <button type="button" disabled={!selectedSession || !text.trim() || text === savedText} onClick={finishExpression}><CornerDownLeft size={15} /> {text === savedText && text ? "已记录" : "完成表达"}</button>
           </div>
         </section>
@@ -173,7 +252,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
               return (
                 <div className="annotation-item" key={`${finding.ruleId}-${finding.range.start}`}>
                   <span className={`annotation-key ${tone}`}>{finding.matchedText}</span>
-                  <div><strong>{finding.issueType}</strong><p>{finding.suggestion}</p></div>
+                  <div><strong>{finding.issueType}</strong><p>{finding.suggestion}</p><div className="finding-actions"><button type="button" onClick={() => finding.replacements[0] ? acceptFinding(finding) : setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><Check size={12} /> {finding.replacements[0] ? `改为“${finding.replacements[0]}”` : "采纳建议"}</button><button type="button" onClick={() => setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><X size={12} /> 忽略</button></div></div>
                 </div>
               );
             })}
@@ -181,6 +260,9 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
               <div className="empty-analysis"><FileText size={20} /><span>{text ? "当前规则未发现明显问题" : "等待输入表达内容"}</span></div>
             ) : null}
           </div>
+          {voiceStatus.includes("设置") ? <button className="recovery-link" type="button" onClick={() => controller.navigate("settings")}>前往设置下载模型</button> : null}
+          {selectedSession?.report ? <div className="session-review"><p className="eyebrow">本次复盘</p><strong>{selectedSession.report.overallScore} 分</strong><p>{selectedSession.report.improvements[0] ?? selectedSession.report.strengths[0]}</p><button type="button" onClick={() => { const plan = controller.trainingPlans.find((item) => item.status === "active") ?? controller.trainingPlans[0]; if (!plan) { controller.navigate("training"); return; } controller.upsertTrainingPlan({ ...plan, tasks: [...plan.tasks, { id: `task-${crypto.randomUUID()}`, title: `复盘：${selectedSession.title}`, description: selectedSession.report?.actionItems[0] ?? "再次完成同场景练习", scenarioId: selectedSession.scenarioId, targetMinutes: 10, status: "todo" }], updatedAt: new Date().toISOString() }); }}>加入训练计划</button></div> : null}
+          {selectedSession ? <button className="delete-session" type="button" onClick={() => { if (window.confirm(`删除会话“${selectedSession.title}”？`)) controller.deleteSession(selectedSession.id); }}><Trash2 size={13} /> 删除当前会话</button> : null}
         </aside>
       </div>
     </div>

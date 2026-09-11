@@ -1,7 +1,7 @@
 {
   "name": "structured-expression-coach",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "packageManager": "pnpm@9.12.3",
   "type": "module",
   "scripts": {
@@ -12,18 +12,25 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.7.6",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-http": "2.5.4",
     "@tauri-apps/plugin-sql": "^2.4.1",
     "lucide-react": "^1.44.0",
+    "mammoth": "1.10.0",
+    "pdfjs-dist": "5.4.149",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "5.0.0",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^30.0.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.0"

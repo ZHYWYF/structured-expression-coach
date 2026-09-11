@@ -1,6 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import Database from "@tauri-apps/plugin-sql";
-import { createDemoWorkspace } from "./demoData";
+import { createEmptyWorkspace } from "./defaultWorkspace";
 import type { PersistedWorkspaceState, Session, WorkspaceState } from "./types";
 
 const DATABASE_URL = "sqlite:structured-expression-coach.db";
@@ -54,19 +54,86 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isPersistedWorkspaceState(value: unknown): value is PersistedWorkspaceState {
-  if (!isRecord(value) || value.version !== 1) return false;
+  if (!isRecord(value) || value.version !== 2) return false;
   if (!["home", "workspace", "interviews", "training", "recordings", "reports", "settings"].includes(String(value.currentPage))) return false;
   if (value.selectedSessionId !== null && typeof value.selectedSessionId !== "string") return false;
-  if (!Array.isArray(value.scenarios) || !Array.isArray(value.trainingPlans) || !Array.isArray(value.recordingTasks)) return false;
+  if (!Array.isArray(value.scenarios) || !Array.isArray(value.trainingPlans) || !Array.isArray(value.recordingTasks) || !Array.isArray(value.tombstones)) return false;
   if (!isRecord(value.preferences)) return false;
   return (
     ["system", "light", "dark"].includes(String(value.preferences.theme)) &&
     typeof value.preferences.autoSave === "boolean" &&
     ["practice", "interview", "recording-review"].includes(String(value.preferences.defaultSessionKind)) &&
-    ["demo", "local", "online"].includes(String(value.preferences.transcriptionProvider)) &&
+    ["local", "online"].includes(String(value.preferences.transcriptionProvider)) &&
     value.preferences.language === "zh-CN" &&
+    isRecord(value.preferences.aiProvider) &&
+    isRecord(value.preferences.onlineAsrProvider) &&
+    isRecord(value.preferences.sync) &&
+    Array.isArray(value.preferences.installedModels) &&
     typeof value.updatedAt === "string"
   );
+}
+
+const LEGACY_SEED_IDS = new Set([
+  "session-interview-growth", "session-weekly-report", "plan-seven-days",
+  "recording-weekly-1", "recording-interview-1",
+]);
+
+function migrateLegacyWorkspace(value: unknown, sessions: Session[]): WorkspaceState | null {
+  if (!isRecord(value) || value.version !== 1 || !isRecord(value.preferences)) return null;
+  if (!Array.isArray(value.scenarios) || !Array.isArray(value.trainingPlans) || !Array.isArray(value.recordingTasks)) return null;
+  const empty = createEmptyWorkspace();
+  const migratedSessions = sessions.filter((session) => !LEGACY_SEED_IDS.has(session.id));
+  const trainingPlans = value.trainingPlans
+    .filter((plan): plan is Record<string, unknown> => isRecord(plan) && typeof plan.id === "string" && !LEGACY_SEED_IDS.has(plan.id))
+    .map((plan) => ({
+      ...plan,
+      scenarioId: typeof plan.scenarioId === "string" ? plan.scenarioId : "scenario-free-practice",
+      goals: Array.isArray(plan.goals) ? plan.goals : (Array.isArray(plan.focusAreas) ? plan.focusAreas : []),
+      currentLevel: ["beginner", "intermediate", "advanced"].includes(String(plan.currentLevel)) ? plan.currentLevel : "intermediate",
+      levelSource: plan.levelSource === "baseline" ? "baseline" : "self-assessment",
+      status: ["draft", "active", "paused", "completed", "archived"].includes(String(plan.status)) ? plan.status : "draft",
+    })) as WorkspaceState["trainingPlans"];
+  const recordingTasks = (value.recordingTasks as WorkspaceState["recordingTasks"]).filter((task) => !LEGACY_SEED_IDS.has(task.id));
+  const currentPage = ["home", "workspace", "interviews", "training", "recordings", "reports", "settings"].includes(String(value.currentPage)) ? value.currentPage as WorkspaceState["currentPage"] : "home";
+  const selectedSessionId = migratedSessions.some((session) => session.id === value.selectedSessionId) ? value.selectedSessionId as string : migratedSessions[0]?.id ?? null;
+  return {
+    ...empty,
+    currentPage,
+    selectedSessionId,
+    sessions: migratedSessions,
+    trainingPlans,
+    recordingTasks,
+    preferences: {
+      ...empty.preferences,
+      theme: ["system", "light", "dark"].includes(String(value.preferences.theme)) ? value.preferences.theme as WorkspaceState["preferences"]["theme"] : "system",
+      autoSave: typeof value.preferences.autoSave === "boolean" ? value.preferences.autoSave : true,
+      defaultSessionKind: ["practice", "interview", "recording-review"].includes(String(value.preferences.defaultSessionKind)) ? value.preferences.defaultSessionKind as WorkspaceState["preferences"]["defaultSessionKind"] : "practice",
+      transcriptionProvider: value.preferences.transcriptionProvider === "online" ? "online" : "local",
+    },
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date().toISOString(),
+  };
+}
+
+function hydrateWorkspace(shellValue: unknown, sessions: Session[]): WorkspaceState | null {
+  if (isRecord(shellValue) && shellValue.version === 2) {
+    const defaults = createEmptyWorkspace();
+    const normalized = {
+      ...shellValue,
+      tombstones: Array.isArray(shellValue.tombstones) ? shellValue.tombstones : [],
+      preferences: isRecord(shellValue.preferences)
+        ? {
+            ...defaults.preferences,
+            ...shellValue.preferences,
+            aiProvider: isRecord(shellValue.preferences.aiProvider) ? shellValue.preferences.aiProvider : defaults.preferences.aiProvider,
+            onlineAsrProvider: isRecord(shellValue.preferences.onlineAsrProvider) ? shellValue.preferences.onlineAsrProvider : defaults.preferences.onlineAsrProvider,
+            sync: isRecord(shellValue.preferences.sync) ? shellValue.preferences.sync : defaults.preferences.sync,
+            installedModels: Array.isArray(shellValue.preferences.installedModels) ? shellValue.preferences.installedModels : [],
+          }
+        : defaults.preferences,
+    };
+    if (isPersistedWorkspaceState(normalized)) return recoverInterruptedRecordings(combineWorkspace(normalized, sessions));
+  }
+  return migrateLegacyWorkspace(shellValue, sessions);
 }
 
 function isSession(value: unknown): value is Session {
@@ -119,10 +186,9 @@ function recoverInterruptedRecordings(workspace: WorkspaceState): WorkspaceState
 
 function parseWorkspace(storage: Storage): WorkspaceState | null {
   const shell = parseJson<unknown>(storage.getItem(LOCAL_WORKSPACE_KEY));
-  if (!isPersistedWorkspaceState(shell)) return null;
   const sessionValue = parseJson<unknown>(storage.getItem(LOCAL_SESSIONS_KEY));
   const sessions = Array.isArray(sessionValue) ? sessionValue.filter(isSession) : [];
-  return recoverInterruptedRecordings(combineWorkspace(shell, sessions));
+  return hydrateWorkspace(shell, sessions);
 }
 
 class LocalStorageRepository implements Repository {
@@ -137,7 +203,7 @@ class LocalStorageRepository implements Repository {
     }
   }
 
-  async initialize(seed = createDemoWorkspace()): Promise<void> {
+  async initialize(seed = createEmptyWorkspace()): Promise<void> {
     const storage = this.storage;
     if (!storage) return;
     if (!storage.getItem(LOCAL_WORKSPACE_KEY)) {
@@ -200,7 +266,7 @@ class SqliteRepository implements Repository {
     return this.db;
   }
 
-  async initialize(seed = createDemoWorkspace()): Promise<void> {
+  async initialize(seed = createEmptyWorkspace()): Promise<void> {
     const db = await this.database();
     await db.execute(
       `CREATE TABLE IF NOT EXISTS workspace_state (
@@ -232,8 +298,7 @@ class SqliteRepository implements Repository {
       [WORKSPACE_ID],
     );
     const shell = parseJson<unknown>(rows[0]?.payload ?? null);
-    if (!isPersistedWorkspaceState(shell)) return null;
-    return recoverInterruptedRecordings(combineWorkspace(shell, await this.listSessions()));
+    return hydrateWorkspace(shell, await this.listSessions());
   }
 
   async saveWorkspace(workspace: WorkspaceState): Promise<void> {
@@ -306,7 +371,7 @@ export function createSqliteRepository(): Repository {
   return new SqliteRepository();
 }
 
-export async function createRepository(seed = createDemoWorkspace()): Promise<Repository> {
+export async function createRepository(seed = createEmptyWorkspace()): Promise<Repository> {
   if (typeof window !== "undefined" && isTauri()) {
     try {
       const repository = createSqliteRepository();

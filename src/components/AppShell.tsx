@@ -23,11 +23,13 @@ export function AppShell({
   active,
   onNavigate,
   saveState,
+  completedTrainingCount,
   children,
 }: {
   active: SectionId;
   onNavigate: (section: SectionId) => void;
   saveState: string;
+  completedTrainingCount: number;
   children: ReactNode;
 }) {
   const activeItem = navigation.find((item) => item.id === active)!;
@@ -58,9 +60,9 @@ export function AppShell({
         </nav>
 
         <div className="sidebar-footer">
-          <div className="streak-number">12</div>
+          <div className="streak-number">{completedTrainingCount}</div>
           <div>
-            <strong>连续训练天数</strong>
+            <strong>已完成训练</strong>
             <span>{saveState}</span>
           </div>
         </div>

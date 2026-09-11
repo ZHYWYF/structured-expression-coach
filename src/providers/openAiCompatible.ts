@@ -1,0 +1,106 @@
+import type { ProviderConfiguration } from "../core/types";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { appFetch } from "./http";
+
+export type SecretKind = "ai" | "online-asr" | "sync";
+
+const memorySecrets = new Map<SecretKind, string>();
+
+export async function readDeviceSecret(kind: SecretKind): Promise<string> {
+  if (isTauri()) return (await invoke<string | null>("get_device_secret", { kind })) ?? "";
+  return memorySecrets.get(kind) ?? "";
+}
+
+export async function writeDeviceSecret(kind: SecretKind, value: string): Promise<void> {
+  if (isTauri()) {
+    await invoke("set_device_secret", { kind, value: value.trim() });
+    return;
+  }
+  if (value.trim()) memorySecrets.set(kind, value.trim());
+  else memorySecrets.delete(kind);
+}
+
+function apiUrl(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
+async function responseError(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text) return `服务返回 ${response.status}`;
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: string }; message?: string };
+    return parsed.error?.message ?? parsed.message ?? `服务返回 ${response.status}`;
+  } catch {
+    return `服务返回 ${response.status}`;
+  }
+}
+
+export async function testProviderConnection(
+  configuration: ProviderConfiguration,
+  apiKey: string,
+): Promise<{ ok: true; latencyMs: number } | { ok: false; message: string }> {
+  if (!configuration.baseUrl.trim()) return { ok: false, message: "请填写服务地址" };
+  if (!apiKey.trim()) return { ok: false, message: "请填写 API Key" };
+  const startedAt = performance.now();
+  try {
+    const response = await appFetch(apiUrl(configuration.baseUrl, "models"), {
+      headers: { Authorization: `Bearer ${apiKey.trim()}` },
+    });
+    if (!response.ok) return { ok: false, message: await responseError(response) };
+    return { ok: true, latencyMs: Math.round(performance.now() - startedAt) };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "连接失败" };
+  }
+}
+
+interface ChatMessage {
+  role: "system" | "user";
+  content: string;
+}
+
+export async function requestChatCompletion(
+  configuration: ProviderConfiguration,
+  messages: ChatMessage[],
+): Promise<string> {
+  const apiKey = await readDeviceSecret("ai");
+  if (!configuration.enabled || !configuration.model.trim() || !apiKey) {
+    throw new Error("请先在设置中启用并完成 AI 配置");
+  }
+  const response = await appFetch(apiUrl(configuration.baseUrl, "chat/completions"), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model: configuration.model, messages, temperature: 0.2 }),
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+  const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const content = body.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error("AI 服务没有返回有效内容");
+  return content;
+}
+
+export async function transcribeWithOnlineProvider(
+  configuration: ProviderConfiguration,
+  file: File,
+): Promise<string> {
+  const apiKey = await readDeviceSecret("online-asr");
+  if (!configuration.enabled || !configuration.model.trim() || !apiKey) {
+    throw new Error("请先在设置中启用并完成在线转写配置");
+  }
+  const form = new FormData();
+  form.append("file", file, file.name);
+  form.append("model", configuration.model);
+  form.append("language", "zh");
+  form.append("response_format", "verbose_json");
+  const response = await appFetch(apiUrl(configuration.baseUrl, "audio/transcriptions"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+  const body = await response.json() as { text?: string };
+  if (!body.text?.trim()) throw new Error("在线转写服务没有返回有效文本");
+  return body.text.trim();
+}

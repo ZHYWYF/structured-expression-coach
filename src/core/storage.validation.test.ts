@@ -42,15 +42,22 @@ describe("LocalStorageRepository workspace validation", () => {
     Reflect.deleteProperty(globalThis, "window");
   });
 
-  it("语法合法但结构损坏的工作区数据应安全返回空值", async () => {
+  it("版本 1 的空工作区可以迁移为版本 2", async () => {
     window.localStorage.setItem(
       "structured-expression-coach:workspace:v1",
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({
+        version: 1, currentPage: "home", selectedSessionId: null, scenarios: [], trainingPlans: [], recordingTasks: [],
+        preferences: { theme: "system", autoSave: true, defaultSessionKind: "practice", transcriptionProvider: "demo", language: "zh-CN" },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
     );
     window.localStorage.setItem("structured-expression-coach:sessions:v1", "[]");
 
     const repository = createLocalStorageRepository();
 
-    expect(await repository.loadWorkspace()).toBeNull();
+    const workspace = await repository.loadWorkspace();
+    expect(workspace?.version).toBe(2);
+    expect(workspace?.sessions).toEqual([]);
+    expect(workspace?.preferences.transcriptionProvider).toBe("local");
   });
 });

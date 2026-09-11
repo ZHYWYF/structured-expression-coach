@@ -18,6 +18,10 @@ export type FeedbackSeverity = "info" | "warning" | "critical";
 export type MaterialKind = "job-description" | "resume" | "reference" | "note";
 export type RecordingStatus = "queued" | "recording" | "transcribing" | "completed" | "failed";
 export type TrainingTaskStatus = "todo" | "in-progress" | "done" | "skipped";
+export type TrainingPlanStatus = "draft" | "active" | "paused" | "completed" | "archived";
+export type TrainingLevelSource = "self-assessment" | "baseline";
+export type ProviderKind = "ai" | "online-asr";
+export type ModelInstallStatus = "not-installed" | "downloading" | "paused" | "verifying" | "ready" | "failed";
 
 export interface Scenario {
   id: Id;
@@ -134,6 +138,11 @@ export interface TrainingPlan {
   startDate: string;
   endDate: string;
   focusAreas: string[];
+  scenarioId: Id;
+  goals: string[];
+  currentLevel: "beginner" | "intermediate" | "advanced";
+  levelSource: TrainingLevelSource;
+  status: TrainingPlanStatus;
   tasks: TrainingTask[];
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
@@ -148,6 +157,12 @@ export interface RecordingTask {
   durationSeconds?: number;
   progress: number;
   transcript?: string;
+  transcriptSegments?: Array<{ id: Id; startMs: number; endMs: number; text: string; speakerLabel?: string }>;
+  provider?: "local" | "online";
+  sourceFileName?: string;
+  sourceMimeType?: string;
+  remoteAudioId?: string;
+  reportStatus?: "not-generated" | "generating" | "ready" | "outdated" | "failed";
   errorMessage?: string;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
@@ -176,7 +191,27 @@ export interface InterviewSession extends SessionBase {
   questionAnswers?: Record<string, string>;
   activeQuestionIndex?: number;
   materialsLocked?: boolean;
+  interviewQuestions?: InterviewQuestion[];
+  interviewFeedback?: Record<string, InterviewAnswerFeedback>;
   materials: Material[];
+}
+
+export interface InterviewQuestion {
+  id: Id;
+  tag: string;
+  text: string;
+  suggestedMinutes: number;
+  source: "local" | "ai";
+  jdEvidence?: string;
+}
+
+export interface InterviewAnswerFeedback {
+  structure: string;
+  jdMatch: string;
+  resumeConsistency: string;
+  evidenceStrength: string;
+  overallSuggestion: string;
+  createdAt: ISODateTime;
 }
 
 export interface PracticeSession extends SessionBase {
@@ -192,31 +227,71 @@ export interface WorkspacePreferences {
   theme: "system" | "light" | "dark";
   autoSave: boolean;
   defaultSessionKind: SessionKind;
-  transcriptionProvider: "demo" | "local" | "online";
+  transcriptionProvider: "local" | "online";
   language: "zh-CN";
+  aiProvider: ProviderConfiguration;
+  onlineAsrProvider: ProviderConfiguration;
+  sync: SyncConfiguration;
+  installedModels: InstalledModel[];
+}
+
+export interface ProviderConfiguration {
+  name: string;
+  baseUrl: string;
+  model: string;
+  enabled: boolean;
+}
+
+export interface InstalledModel {
+  id: string;
+  label: string;
+  fileName: string;
+  sizeBytes: number;
+  status: ModelInstallStatus;
+  progress: number;
+  localPath?: string;
+  errorMessage?: string;
+}
+
+export interface SyncConfiguration {
+  enabled: boolean;
+  endpoint: string;
+  account: string;
+  deviceName: string;
+  lastSyncedAt: ISODateTime | null;
+  status: "not-configured" | "idle" | "syncing" | "error";
+  errorMessage?: string;
 }
 
 export interface WorkspaceState {
-  version: 1;
+  version: 2;
   currentPage: WorkspacePage;
   selectedSessionId: Id | null;
   sessions: Session[];
   scenarios: Scenario[];
   trainingPlans: TrainingPlan[];
   recordingTasks: RecordingTask[];
+  tombstones: Tombstone[];
   preferences: WorkspacePreferences;
   updatedAt: ISODateTime;
 }
 
 export interface PersistedWorkspaceState {
-  version: 1;
+  version: 2;
   currentPage: WorkspacePage;
   selectedSessionId: Id | null;
   scenarios: Scenario[];
   trainingPlans: TrainingPlan[];
   recordingTasks: RecordingTask[];
+  tombstones: Tombstone[];
   preferences: WorkspacePreferences;
   updatedAt: ISODateTime;
+}
+
+export interface Tombstone {
+  entityType: "session" | "training-plan" | "recording";
+  entityId: Id;
+  deletedAt: ISODateTime;
 }
 
 export type NewSessionInput =
