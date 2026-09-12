@@ -35,21 +35,47 @@ async function responseError(response: Response): Promise<string> {
   }
 }
 
+function requestError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  try {
+    const serialized = JSON.stringify(error);
+    return serialized && serialized !== "{}" ? serialized : "连接失败，请检查网络、服务地址和应用网络权限";
+  } catch {
+    return "连接失败，请检查网络、服务地址和应用网络权限";
+  }
+}
+
 export async function testProviderConnection(
   configuration: ProviderConfiguration,
   apiKey: string,
+  kind: Exclude<SecretKind, "sync"> = "ai",
 ): Promise<{ ok: true; latencyMs: number } | { ok: false; message: string }> {
   if (!configuration.baseUrl.trim()) return { ok: false, message: "请填写服务地址" };
   if (!apiKey.trim()) return { ok: false, message: "请填写 API Key" };
   const startedAt = performance.now();
   try {
-    const response = await appFetch(apiUrl(configuration.baseUrl, "models"), {
-      headers: { Authorization: `Bearer ${apiKey.trim()}` },
-    });
+    const response = kind === "ai"
+      ? await appFetch(apiUrl(configuration.baseUrl, "chat/completions"), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey.trim()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: configuration.model.trim(),
+            messages: [{ role: "user", content: "请只回复 OK" }],
+            max_tokens: 2,
+            temperature: 0,
+          }),
+        })
+      : await appFetch(apiUrl(configuration.baseUrl, "models"), {
+          headers: { Authorization: `Bearer ${apiKey.trim()}` },
+        });
     if (!response.ok) return { ok: false, message: await responseError(response) };
     return { ok: true, latencyMs: Math.round(performance.now() - startedAt) };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "连接失败" };
+    return { ok: false, message: requestError(error) };
   }
 }
 

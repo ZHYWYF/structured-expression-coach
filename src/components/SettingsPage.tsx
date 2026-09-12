@@ -22,10 +22,15 @@ function ProviderForm({ title, description, kind, value, onChange }: { title: st
     setConnection({ status: "idle", message: "配置已保存到当前设备" });
   };
   const test = async () => {
-    await writeDeviceSecret(kind, apiKey);
     setConnection({ status: "testing", message: "正在连接" });
-    const result = await testProviderConnection(value, apiKey);
-    setConnection(result.ok ? { status: "success", message: `连接成功 · ${result.latencyMs} ms` } : { status: "error", message: result.message });
+    try {
+      await writeDeviceSecret(kind, apiKey);
+      const result = await testProviderConnection(value, apiKey, kind);
+      setConnection(result.ok ? { status: "success", message: `连接成功 · ${result.latencyMs} ms` } : { status: "error", message: result.message });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : typeof error === "string" ? error : "保存凭证失败";
+      setConnection({ status: "error", message });
+    }
   };
   return (
     <section className="settings-group provider-settings">
@@ -145,7 +150,7 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
           <SettingRow icon={Trash2} title="清理本地数据" value="删除会话、录音、报告和计划" onClick={() => void clearLocalData()} />
         </section>
       </div>
-      <footer className="settings-footer"><strong>言序 0.2.0</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
+      <footer className="settings-footer"><strong>言序 0.2.1</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
     </div>
   );
 }

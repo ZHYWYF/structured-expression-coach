@@ -36,6 +36,24 @@ describe("OpenAI-compatible provider", () => {
     await expect(testProviderConnection(configuration, "key")).resolves.toEqual({ ok: false, message: "unauthorized" });
   });
 
+  it("tests AI configuration through the configured chat model", async () => {
+    const configuration = { ...createEmptyWorkspace().preferences.aiProvider, enabled: true, model: "deepseek-flash", baseUrl: "https://api.deepseek.com" };
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "OK" } }] }), { status: 200 }));
+
+    await expect(testProviderConnection(configuration, "key", "ai")).resolves.toEqual(expect.objectContaining({ ok: true }));
+    expect(fetch).toHaveBeenCalledWith("https://api.deepseek.com/chat/completions", expect.objectContaining({
+      method: "POST",
+      body: expect.stringContaining('"model":"deepseek-flash"'),
+    }));
+  });
+
+  it("preserves string errors returned by the native transport", async () => {
+    const configuration = { ...createEmptyWorkspace().preferences.aiProvider, model: "deepseek-flash" };
+    vi.mocked(fetch).mockRejectedValueOnce("network permission denied");
+
+    await expect(testProviderConnection(configuration, "key", "ai")).resolves.toEqual({ ok: false, message: "network permission denied" });
+  });
+
   it("requests chat completion with normalized URL and rejects empty content", async () => {
     const configuration = { ...createEmptyWorkspace().preferences.aiProvider, enabled: true, model: "model", baseUrl: "https://example.test/v1/" };
     await writeDeviceSecret("ai", "key");
