@@ -169,7 +169,7 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
           <SettingRow icon={Trash2} title="清理本地数据" value="删除会话、录音、报告和计划" onClick={() => void clearLocalData()} />
         </section>
       </div>
-      <footer className="settings-footer"><strong>言序 0.2.6</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
+      <footer className="settings-footer"><strong>言序 0.2.7</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
     </div>
   );
 }

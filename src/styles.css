@@ -209,12 +209,12 @@ h1, h2, p { margin-top: 0; }
 .material-editor-heading h2 { margin: 0; font-size: 15px; }
 .material-editor-heading > span { display: flex; align-items: center; gap: 5px; color: var(--green); font-size: 9px; }
 .material-editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.material-editor-grid label > span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 9px; font-weight: 650; }
+.material-field > span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 9px; font-weight: 650; }
 .material-editor-grid input:not([type="file"]), .material-editor-grid textarea { width: 100%; border: 1px solid var(--line); background: var(--white); color: var(--ink); }
 .material-editor-grid input:not([type="file"]) { height: 34px; padding: 0 10px; border-radius: 7px 7px 0 0; border-bottom: 0; font-size: 10px; }
 .material-editor-grid textarea { min-height: 96px; padding: 10px; resize: vertical; border-radius: 0 0 7px 7px; font-size: 10px; line-height: 1.6; }
-.material-editor-grid em { display: inline-flex; margin-top: 7px; color: var(--blue); font-size: 9px; font-style: normal; cursor: pointer; }
-.material-editor-grid input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.material-file-trigger { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; color: var(--blue); font-size: 9px; cursor: pointer; }
+.file-upload-trigger { cursor: pointer; user-select: none; }
 .material-editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 15px; }
 .material-editor-actions > span { color: var(--muted); font-size: 9px; }
 .material-editor-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 7px; background: var(--ink); color: #fff; font-size: 9px; cursor: pointer; }

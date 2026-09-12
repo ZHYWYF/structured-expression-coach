@@ -9,7 +9,8 @@ import { ExpressionWorkspace } from "./ExpressionWorkspace";
 import { createController } from "../test/createController";
 import type { InterviewSession, PracticeSession } from "../core/types";
 
-vi.mock("../materials/readDocument", () => ({ readDocumentText: vi.fn() }));
+const materialMocks = vi.hoisted(() => ({ readDocumentText: vi.fn() }));
+vi.mock("../materials/readDocument", () => ({ readDocumentText: materialMocks.readDocumentText }));
 vi.mock("../providers/openAiCompatible", () => ({ requestChatCompletion: vi.fn(), readDeviceSecret: vi.fn(() => ""), writeDeviceSecret: vi.fn(), testProviderConnection: vi.fn() }));
 vi.mock("../transcription/localRuntime", () => ({ localTranscriptionRuntime: { transcribe: vi.fn(), install: vi.fn(), cancelAll: vi.fn() }, localModelCatalog: [] }));
 
@@ -55,6 +56,19 @@ describe("product page flows", () => {
     const updated = updater?.(interview) as InterviewSession;
     expect(updated.materialsLocked).toBe(true);
     expect(updated.interviewQuestions?.length).toBeGreaterThan(0);
+  });
+
+  it("imports JD and resume files through explicit file inputs", async () => {
+    materialMocks.readDocumentText.mockResolvedValue("文件解析内容");
+    const controller = createController({ sessions: [interview], selectedSessionId: interview.id, selectedSession: interview });
+    render(<InterviewStudio controller={controller} />);
+    fireEvent.click(screen.getAllByText("上传材料")[0]);
+
+    const fileInputs = screen.getAllByLabelText("选择文件") as HTMLInputElement[];
+    expect(fileInputs).toHaveLength(2);
+    fireEvent.change(fileInputs[0], { target: { files: [new File(["JD"], "job.md", { type: "text/markdown" })] } });
+
+    expect(materialMocks.readDocumentText).toHaveBeenCalled();
   });
 
   it("searches sessions and records a completed expression", () => {

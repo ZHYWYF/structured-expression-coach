@@ -50,6 +50,15 @@ describe("ReportsPage", () => {
     expect(controller.updateSession).not.toHaveBeenCalled();
   });
 
+  it("associates the upload trigger with the audio file input", () => {
+    const controller = createController();
+    render(<ReportsPage controller={controller} />);
+
+    const input = screen.getByLabelText("上传录音") as HTMLInputElement;
+    expect(input.type).toBe("file");
+    expect(input.accept).toContain("audio/*");
+  });
+
   it("uses the selected scenario prompt when generating a report", async () => {
     const completedTask: RecordingTask = { ...task, status: "completed", transcript: "项目延期，主要原因是沟通不到位。", analysisScenario: "retrospective" };
     mocks.requestChatCompletion.mockResolvedValue(JSON.stringify({
