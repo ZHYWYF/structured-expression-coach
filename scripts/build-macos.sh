@@ -47,12 +47,23 @@ trap cleanup EXIT
 cp -R "$app_path" "$dmg_staging_dir/言序.app"
 ln -s /Applications "$dmg_staging_dir/Applications"
 mkdir -p "$dmg_dir"
-hdiutil create \
-  -volname "言序" \
-  -srcfolder "$dmg_staging_dir" \
-  -ov \
-  -format UDZO \
-  "$dmg_path"
+for attempt in 1 2 3; do
+  rm -f "$dmg_path"
+  if hdiutil create \
+    -volname "言序" \
+    -srcfolder "$dmg_staging_dir" \
+    -ov \
+    -format UDZO \
+    "$dmg_path"; then
+    break
+  fi
+  if [[ "$attempt" -eq 3 ]]; then
+    echo "错误：连续 3 次创建 DMG 失败。"
+    exit 1
+  fi
+  echo "DMG 创建遇到临时磁盘占用，正在进行第 $((attempt + 1)) 次尝试。"
+  sleep $((attempt * 3))
+done
 hdiutil verify "$dmg_path"
 
 echo "macOS 安装包已生成："
