@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyWorkspace } from "../core/defaultWorkspace";
-import type { RecordingTask } from "../core/types";
+import type { PracticeSession, RecordingTask, Tombstone, TrainingPlan, WorkspaceState } from "../core/types";
 
 const audioMocks = vi.hoisted(() => ({ loadAudioFile: vi.fn(), saveAudioFile: vi.fn() }));
 vi.mock("../transcription/audioStore", () => audioMocks);
@@ -10,6 +10,22 @@ import { syncWorkspace, testSyncConnection } from "./webdavSync";
 
 function recording(id: string, updatedAt: string, title = "audio.wav"): RecordingTask {
   return { id, sessionId: `session-${id}`, title, sourceFileName: title, status: "completed", provider: "local", progress: 100, reportStatus: "not-generated", createdAt: updatedAt, updatedAt };
+}
+
+const acceptanceTime = "2026-09-12T08:00:00.000Z";
+const acceptanceCredentials = { endpoint: "https://sync.test", username: "<REDACTED>", password: "<REDACTED>" };
+function practice(id: string, updatedAt = acceptanceTime): PracticeSession {
+  return { id, title: id, kind: "practice", scenarioId: "scenario-weekly-report", status: "draft", draftText: "原文", statements: [], messages: [], feedback: [], recordingTaskIds: [], materials: [], createdAt: acceptanceTime, updatedAt };
+}
+function plan(id: string, updatedAt: string): TrainingPlan {
+  return { id, title: id, description: "", scenarioId: "scenario-weekly-report", goals: ["结论先行"], currentLevel: "beginner", levelSource: "self-assessment", status: "draft", startDate: "2026-09-12", endDate: "2026-09-18", focusAreas: [], tasks: [], createdAt: acceptanceTime, updatedAt };
+}
+function remoteServer(remote: WorkspaceState) {
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (init?.method === "MKCOL" || init?.method === "PUT") return new Response(null, { status: 201 });
+    if (String(input).endsWith("workspace.json")) return new Response(JSON.stringify(remote), { status: 200 });
+    return new Response(null, { status: 404 });
+  });
 }
 
 describe("WebDAV sync", () => {
@@ -66,5 +82,63 @@ describe("WebDAV sync", () => {
 
     expect(conflict).toBeDefined();
     expect(audioMocks.saveAudioFile).toHaveBeenCalledWith(conflict?.id, expect.any(File));
+  });
+
+  it.each<Tombstone["entityType"]>(["session", "recording", "training-plan"])("删除%s后离线设备更新不能恢复原ID", async (entityType) => {
+    const local = createEmptyWorkspace();
+    local.tombstones = [{ entityType, entityId: "removed", deletedAt: "2026-09-12T10:00:00.000Z" }];
+    const remote = createEmptyWorkspace();
+    for (const updatedAt of ["2026-09-12T09:00:00.000Z", "2026-09-12T11:00:00.000Z"]) {
+      remote.sessions = entityType === "session" ? [practice("removed", updatedAt)] : [];
+      remote.recordingTasks = entityType === "recording" ? [recording("removed", updatedAt)] : [];
+      remote.trainingPlans = entityType === "training-plan" ? [plan("removed", updatedAt)] : [];
+      remoteServer(remote);
+      const result = await syncWorkspace(local, acceptanceCredentials);
+      expect([...result.workspace.sessions, ...result.workspace.recordingTasks, ...result.workspace.trainingPlans].map((item) => item.id), `远端更新时间${updatedAt}`).not.toContain("removed");
+      expect(result.workspace.tombstones).toEqual(local.tombstones);
+    }
+  });
+
+  it("远端删除当前会话后选择仍存在的会话", async () => {
+    const local = createEmptyWorkspace();
+    local.sessions = [practice("removed"), practice("survivor")];
+    local.selectedSessionId = "removed";
+    const remote = createEmptyWorkspace();
+    remote.tombstones = [{ entityType: "session", entityId: "removed", deletedAt: "2026-09-12T10:00:00.000Z" }];
+    remoteServer(remote);
+    const { workspace } = await syncWorkspace(local, acceptanceCredentials);
+    expect(workspace.sessions.map((item) => item.id)).toEqual(["survivor"]);
+    expect(workspace.selectedSessionId).toBe("survivor");
+  });
+
+  it("两端相同录音首次合并不因传输字段产生冲突", async () => {
+    const local = createEmptyWorkspace();
+    local.recordingTasks = [recording("same", acceptanceTime)];
+    const remote = structuredClone(local);
+    remoteServer(remote);
+    const result = await syncWorkspace(local, acceptanceCredentials);
+    expect(result.conflicts).toBe(0);
+    expect(result.workspace.recordingTasks.map((item) => item.id)).toEqual(["same"]);
+  });
+
+  it("两端改动保留两份会话并正确重连冲突录音", async () => {
+    const local = createEmptyWorkspace();
+    local.preferences.sync.lastSyncedAt = "2026-09-11T00:00:00.000Z";
+    local.sessions = [{ ...practice("session"), draftText: "本地原文", recordingTaskIds: ["audio"] }];
+    local.recordingTasks = [{ ...recording("audio", acceptanceTime), sessionId: "session", transcript: "本地逐字稿" }];
+    const remote = structuredClone(local);
+    remote.sessions[0].draftText = "远端原文";
+    remote.recordingTasks[0].transcript = "远端逐字稿";
+    remoteServer(remote);
+    const snapshot = structuredClone(local);
+    const result = await syncWorkspace(local, acceptanceCredentials);
+    expect(result.conflicts).toBe(2);
+    const copy = result.workspace.sessions.find((item) => item.id !== "session")!;
+    const audio = result.workspace.recordingTasks.find((item) => item.id !== "audio")!;
+    expect(copy.draftText).toBe("远端原文");
+    expect(audio.sessionId).toBe(copy.id);
+    expect(copy.recordingTaskIds).toEqual([audio.id]);
+    expect(result.workspace.sessions.find((item) => item.id === "session")?.draftText).toBe("本地原文");
+    expect(local).toEqual(snapshot);
   });
 });

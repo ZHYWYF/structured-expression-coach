@@ -234,13 +234,21 @@ function collectMatches(
 
       let start = text.indexOf(pattern);
       while (start !== -1) {
+        if ((pattern === "额" || pattern === "呃") &&
+            ((start > 0 && !/[\s，。！？、；：,.!?;:]/.test(text[start - 1])) ||
+             (start + pattern.length < text.length && !/[\s，。！？、；：,.!?;:]/.test(text[start + pattern.length])))) {
+          start = text.indexOf(pattern, start + 1);
+          continue;
+        }
         candidates.push({
           range: { start, end: start + pattern.length },
           matchedText: pattern,
           issueType: rule.issueType,
           reason: rule.reason,
           suggestion: rule.suggestion,
-          replacements: [...rule.replacements],
+          replacements: ["GEN-032", "GEN-037"].includes(rule.id)
+            ? [rule.replacements[rule.patterns.indexOf(pattern)]].filter((value): value is string => typeof value === "string")
+            : [...rule.replacements],
           ruleId: rule.id,
           source: {
             type: rule.sourceType,

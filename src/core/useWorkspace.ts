@@ -28,7 +28,10 @@ export interface WorkspaceController extends WorkspaceState {
   selectedSession: Session | null;
   isHydrated: boolean;
   isSaving: boolean;
+  hasUnsavedChanges?: boolean;
   persistenceError: string | null;
+  getSnapshot?(): WorkspaceState;
+  updateRecordingTask?(taskId: string, updater: (task: RecordingTask) => RecordingTask): void;
   navigate(page: WorkspacePage): void;
   selectSession(sessionId: string): void;
   createSession(input?: NewSessionInput): Session;
@@ -123,6 +126,10 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
   const [isHydrated, setIsHydrated] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const lastSavedRef = useRef<WorkspaceState | null>(null);
+  const hydrationFailedRef = useRef(false);
   const repositoryRef = useRef<Repository | null>(options.repository ?? null);
   const workspaceRef = useRef(workspace);
   const saveSequenceRef = useRef(0);
@@ -141,8 +148,16 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
         repositoryRef.current = repository;
         await repository.initialize(initialState);
         const stored = await repository.loadWorkspace();
-        if (!cancelled && stored) setWorkspace(stored);
+        if (!cancelled && stored) {
+          workspaceRef.current = stored;
+          lastSavedRef.current = stored;
+          setWorkspace(stored);
+        } else if (!cancelled && !stored) {
+          hydrationFailedRef.current = true;
+          setPersistenceError("本地工作区无法读取，已停止自动保存以保护原数据。请勿清理数据。");
+        }
       } catch (error) {
+        hydrationFailedRef.current = true;
         if (!cancelled) setPersistenceError(errorMessage(error));
       } finally {
         if (!cancelled) setIsHydrated(true);
@@ -153,38 +168,47 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
     };
   }, [initialState]);
 
+  const persist = useCallback((snapshot: WorkspaceState): Promise<void> => {
+    if (hydrationFailedRef.current) return Promise.reject(new Error("本地工作区尚未安全载入，不能覆盖原数据"));
+    const repository = repositoryRef.current;
+    if (!repository) return Promise.reject(new Error("本地存储尚未准备好"));
+    const sequence = ++saveSequenceRef.current;
+    setIsSaving(true);
+    const task = saveQueueRef.current.catch(() => undefined).then(async () => {
+      await repository.saveWorkspace(snapshot);
+      lastSavedRef.current = snapshot;
+      setHasUnsavedChanges(workspaceRef.current !== snapshot);
+    });
+    saveQueueRef.current = task;
+    return task.then(() => { setPersistenceError(null); }).catch((error: unknown) => {
+      setPersistenceError(errorMessage(error));
+      setHasUnsavedChanges(true);
+      throw error;
+    }).finally(() => {
+      if (sequence === saveSequenceRef.current) setIsSaving(false);
+    });
+  }, []);
+
   useEffect(() => {
     if (!isHydrated) return;
+    if (hydrationFailedRef.current || workspace === lastSavedRef.current) return;
     const isAutoSaveTransition = autoSaveRef.current !== workspace.preferences.autoSave;
     autoSaveRef.current = workspace.preferences.autoSave;
     if (!workspace.preferences.autoSave && !isAutoSaveTransition) return;
-    const sequence = ++saveSequenceRef.current;
     const timer = window.setTimeout(() => {
-      const repository = repositoryRef.current;
-      if (!repository) return;
-      setIsSaving(true);
-      void repository
-        .saveWorkspace(workspace)
-        .then(() => {
-          if (sequence === saveSequenceRef.current) setPersistenceError(null);
-        })
-        .catch((error: unknown) => {
-          if (sequence === saveSequenceRef.current) setPersistenceError(errorMessage(error));
-        })
-        .finally(() => {
-          if (sequence === saveSequenceRef.current) setIsSaving(false);
-        });
+      void persist(workspace).catch(() => undefined);
     }, persistDelayMs);
     return () => window.clearTimeout(timer);
-  }, [isHydrated, persistDelayMs, workspace]);
+  }, [isHydrated, persistDelayMs, workspace, persist]);
 
   const mutate = useCallback((updater: (current: WorkspaceState) => WorkspaceState) => {
-    setWorkspace((current) => {
-      const next = updater(current);
-      const committed = { ...next, updatedAt: new Date().toISOString() };
-      workspaceRef.current = committed;
-      return committed;
-    });
+    const current = workspaceRef.current;
+    const next = updater(current);
+    if (next === current) return;
+    const committed = { ...next, updatedAt: new Date().toISOString() };
+    workspaceRef.current = committed;
+    setHasUnsavedChanges(true);
+    setWorkspace(committed);
   }, []);
 
   const navigate = useCallback(
@@ -226,6 +250,11 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
         return {
           ...current,
           sessions,
+          trainingPlans: current.trainingPlans.map((plan) => ({
+            ...plan,
+            linkedSessionIds: plan.linkedSessionIds?.filter((id) => id !== sessionId),
+            tasks: plan.tasks.map((task) => task.sessionId === sessionId ? { ...task, sessionId: undefined } : task),
+          })),
           recordingTasks: current.recordingTasks.filter((task) => task.sessionId !== sessionId),
           tombstones: [
             ...current.tombstones.filter((item) => item.entityId !== sessionId && !relatedRecordings.some((task) => task.id === item.entityId)),
@@ -247,7 +276,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
         ...current,
         sessions: current.sessions.map((session) =>
           session.id === sessionId
-            ? { ...updater(session), id: session.id, updatedAt: new Date().toISOString() }
+            ? (() => { const next = updater(session); return next === session ? session : { ...next, id: session.id, updatedAt: new Date().toISOString() }; })()
             : session,
         ),
       })),
@@ -328,7 +357,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
       mutate((current) => ({
         ...current,
         trainingPlans: current.trainingPlans.map((plan) =>
-          plan.id === planId
+          plan.id === planId && !["completed", "archived"].includes(plan.status)
             ? {
                 ...plan,
                 updatedAt: new Date().toISOString(),
@@ -350,12 +379,17 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
 
   const upsertTrainingPlan = useCallback(
     (plan: TrainingPlan) =>
-      mutate((current) => ({
+      mutate((current) => {
+        const existing = current.trainingPlans.find((item) => item.id === plan.id);
+        if (existing && ["completed", "archived"].includes(existing.status)) return current;
+        if (current.tombstones.some((item) => item.entityType === "training-plan" && item.entityId === plan.id)) return current;
+        if (plan.status === "active" && current.trainingPlans.some((item) => item.id !== plan.id && item.scenarioId === plan.scenarioId && item.status === "active")) return current;
+        return ({
         ...current,
         trainingPlans: current.trainingPlans.some((item) => item.id === plan.id)
           ? current.trainingPlans.map((item) => item.id === plan.id ? plan : item)
           : [plan, ...current.trainingPlans],
-      })),
+      }); }),
     [mutate],
   );
 
@@ -371,6 +405,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
   const upsertRecordingTask = useCallback(
     (task: RecordingTask) =>
       mutate((current) => {
+        if (current.tombstones.some((item) => (item.entityType === "recording" && item.entityId === task.id) || (item.entityType === "session" && item.entityId === task.sessionId))) return current;
         const exists = current.recordingTasks.some((item) => item.id === task.id);
         return {
           ...current,
@@ -414,19 +449,25 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
     [mutate],
   );
 
+  const updateRecordingTask = useCallback((taskId: string, updater: (task: RecordingTask) => RecordingTask) => mutate((current) => ({
+    ...current,
+    recordingTasks: current.recordingTasks.map((task) => task.id === taskId ? updater(task) : task),
+  })), [mutate]);
+
   const flush = useCallback(async () => {
-    const repository = repositoryRef.current;
-    if (!repository) return;
-    setIsSaving(true);
-    try {
-      await repository.saveWorkspace(workspaceRef.current);
-      setPersistenceError(null);
-    } catch (error) {
-      setPersistenceError(errorMessage(error));
-    } finally {
-      setIsSaving(false);
-    }
-  }, []);
+    await persist(workspaceRef.current);
+  }, [persist]);
+
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (workspaceRef.current === lastSavedRef.current) return;
+      void flush().catch(() => undefined);
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [flush]);
 
   const selectedSession = useMemo(
     () => workspace.sessions.find((session) => session.id === workspace.selectedSessionId) ?? null,
@@ -438,6 +479,9 @@ export function useWorkspace(options: UseWorkspaceOptions = {}): WorkspaceContro
     selectedSession,
     isHydrated,
     isSaving,
+    hasUnsavedChanges,
+    getSnapshot: () => workspaceRef.current,
+    updateRecordingTask,
     persistenceError,
     navigate,
     selectSession,

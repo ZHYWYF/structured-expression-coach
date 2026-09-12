@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import publicKnowledge from "../../public/knowledge/local-knowledge.json";
 
 import { analyzeText, knowledgeBaseStats, localKnowledgeBase, localKnowledgeRulePacks } from "./index";
 
@@ -132,5 +133,52 @@ describe("analyzeText", () => {
       expect(rule.reason.trim()).not.toBe("");
       expect(rule.suggestion.trim()).not.toBe("");
     }
+  });
+
+  it.each([
+    ["进行一个沟通", "沟通"],
+    ["进行一个确认", "确认"],
+    ["做一个处理", "处理"],
+  ])("精简%s时首选替换保留动作%s", (phrase, action) => {
+    const text = `我与客户${phrase}。`;
+    const finding = analyzeText(text, "report").find((item) => item.ruleId === "GEN-032");
+    expect(finding).toBeDefined();
+    expect(finding?.matchedText).toBe(phrase);
+    expect(finding?.replacements[0]).toBe(action);
+    const accepted = text.slice(0, finding!.range.start) + finding!.replacements[0] + text.slice(finding!.range.end);
+    expect(accepted).toBe(`我与客户${action}。`);
+  });
+
+  it("金额额外配额名额中的额不被当作填充词", () => {
+    const texts = ["合同金额为三万元。", "无需额外处理。", "配额已分配。", "招聘名额为三人。"];
+    expect(texts.map((text) => analyzeText(text, "report").filter((item) => item.ruleId === "GEN-001"))).toEqual([[], [], [], []]);
+  });
+
+  it("独立填充词仍能定位且不改动原文", () => {
+    const text = "额，我来说明。呃，请看数据。";
+    const fillers = analyzeText(text, "general").filter((item) => item.ruleId === "GEN-001");
+    expect(fillers.map((item) => item.matchedText)).toEqual(["额", "呃"]);
+    for (const item of fillers) expect(text.slice(item.range.start, item.range.end)).toBe(item.matchedText);
+    expect(text).toBe("额，我来说明。呃，请看数据。");
+  });
+
+  it("真实知识库千字分析的热运行P95低于100ms且结果稳定", () => {
+    const text = "本周我完成三个里程碑，验收通过率提升至95%。下一步由我在周五前完成上线验证。".repeat(30);
+    const expected = analyzeText(text, "report");
+    const durations: number[] = [];
+    for (let run = 0; run < 20; run += 1) {
+      const start = performance.now();
+      const actual = analyzeText(text, "report");
+      durations.push(performance.now() - start);
+      expect(actual).toEqual(expected);
+    }
+    const p95 = [...durations].sort((left, right) => left - right)[18];
+    console.info(`本地文字分析：${text.length}字，20次热运行P95=${p95.toFixed(2)}ms`);
+    expect(p95, `字符数=${text.length}，热运行P95=${p95.toFixed(2)}ms`).toBeLessThan(100);
+  });
+
+  it("public发布的基础规则与运行时基础规则一致", () => {
+    expect(publicKnowledge.lexicalRules).toEqual(localKnowledgeRulePacks[0]);
+    expect(publicKnowledge.packVersion).toBe(localKnowledgeBase.packVersion);
   });
 });

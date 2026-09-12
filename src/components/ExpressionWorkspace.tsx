@@ -19,6 +19,8 @@ type MicrophoneSession = {
   busy: boolean;
   stopping: boolean;
   processing: Promise<void> | null;
+  sessionId: string;
+  modelId: string;
 };
 
 const LIVE_TRANSCRIPTION_WINDOW_SECONDS = 1.5;
@@ -67,25 +69,20 @@ function HighlightedText({ text, findings }: { text: string; findings: AnalysisF
 }
 
 export function ExpressionWorkspace({ controller }: { controller: WorkspaceController }) {
-  const [savedText, setSavedText] = useState("");
   const [search, setSearch] = useState("");
-  const [dismissed, setDismissed] = useState<string[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState("");
   const microphoneRef = useRef<MicrophoneSession | null>(null);
-  useEffect(() => () => {
-    const microphone = microphoneRef.current;
-    if (!microphone) return;
-    microphone.processor.disconnect();
-    microphone.source.disconnect();
-    microphone.stream.getTracks().forEach((track) => track.stop());
-    void microphone.context.close();
-    microphoneRef.current = null;
-  }, []);
-  const sessions = controller.sessions.filter((session) => session.kind !== "interview" && (!search.trim() || `${session.title}\n${session.draftText}`.toLowerCase().includes(search.trim().toLowerCase())));
-  const selectedSession = controller.selectedSession?.kind !== "interview"
+  const startingRef = useRef(0);
+  const [isStarting, setIsStarting] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const sessions = controller.sessions.filter((session) => session.kind === "practice" && (showArchived || session.status !== "archived") && (!search.trim() || `${session.title}\n${session.draftText}`.toLowerCase().includes(search.trim().toLowerCase())));
+  const selectedSession = controller.selectedSession?.kind === "practice"
     ? controller.selectedSession
     : sessions[0] ?? null;
+  const savedText = selectedSession?.statements.at(-1)?.text ?? "";
+  const dismissed = selectedSession?.dismissedFindings ?? [];
+  const setDismissed = (values: string[]) => { if (selectedSession) controller.updateSession(selectedSession.id, (session) => ({ ...session, dismissedFindings: values })); };
   const selectedScenario = controller.scenarios.find((item) => item.id === selectedSession?.scenarioId);
   const mode: AnalysisMode = selectedScenario?.category === "meeting" ? "复盘" : "汇报";
   const text = selectedSession?.draftText ?? "";
@@ -146,28 +143,24 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
       improvements: findings.slice(0, 3).map((item) => `${item.issueType}：${item.suggestion}`),
       actionItems: findings.slice(0, 2).map((item) => item.suggestion), generatedAt: new Date().toISOString(),
     } }));
-    setSavedText(text);
   };
 
   const acceptFinding = (finding: AnalysisFinding) => {
     if (!selectedSession) return;
-    const replacement = finding.replacements[0];
+    const replacement = ["GEN-032", "GEN-037"].includes(finding.ruleId) ? finding.replacements[0] : undefined;
     if (!replacement) return;
     controller.updateSessionText(`${text.slice(0, finding.range.start)}${replacement}${text.slice(finding.range.end)}`, selectedSession.id);
   };
 
-  const processVoiceChunks = async (force = false): Promise<void> => {
-    const microphone = microphoneRef.current;
+  const processVoiceChunks = async (force = false, microphone = microphoneRef.current): Promise<void> => {
     if (!microphone) return;
     if (microphone.processing) return microphone.processing;
     const threshold = microphone.sampleRate * LIVE_TRANSCRIPTION_WINDOW_SECONDS;
     if (!force && microphone.chunks.reduce((sum, item) => sum + item.length, 0) < threshold) return;
-    const model = controller.preferences.installedModels.find((item) => item.status === "ready");
-    const sessionId = selectedSession?.id;
+    const sessionId = microphone.sessionId;
     microphone.processing = (async () => {
       microphone.busy = true;
       try {
-        if (!model) throw new Error("请先在设置中下载本地转写模型");
         do {
           const sourceLength = microphone.chunks.reduce((sum, item) => sum + item.length, 0);
           if (!sourceLength || (!force && sourceLength < threshold)) break;
@@ -182,7 +175,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
             samples[index] = source[before] * (1 - ratio) + source[after] * ratio;
           }
           setVoiceStatus("正在识别，同时继续聆听…");
-          const result = await localTranscriptionRuntime.transcribe(model.id, samples);
+          const result = await localTranscriptionRuntime.transcribe(microphone.modelId, samples);
           if (result.text && sessionId) {
             controller.updateSession(sessionId, (session) => ({ ...session, draftText: `${session.draftText}${result.text.trim()}` }));
           }
@@ -199,30 +192,59 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
     return microphone.processing;
   };
 
-  const toggleMicrophone = async () => {
-    if (microphoneRef.current) {
-      const current = microphoneRef.current;
-      current.stopping = true;
-      current.processor.disconnect(); current.source.disconnect(); current.stream.getTracks().forEach((track) => track.stop());
-      setIsListening(false); setVoiceStatus("正在完成最后一段识别…");
+  const stopMicrophone = async () => {
+    startingRef.current += 1;
+    setIsStarting(false);
+    const current = microphoneRef.current;
+    if (!current || current.stopping) return;
+    current.stopping = true;
+    current.processor.onaudioprocess = null;
+    current.processor.disconnect();
+    current.source.disconnect();
+    current.stream.getTracks().forEach((track) => track.stop());
+    setIsListening(false);
+    try {
       if (current.processing) await current.processing;
-      await processVoiceChunks(true);
-      await current.context.close(); microphoneRef.current = null; setVoiceStatus("语音输入已结束");
+      await processVoiceChunks(true, current);
+    } finally {
+      await current.context.close().catch(() => undefined);
+      if (microphoneRef.current === current) microphoneRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    setVoiceStatus("");
+    return () => { void stopMicrophone(); };
+  }, [selectedSession?.id]);
+
+  const toggleMicrophone = async () => {
+    if (isStarting) { startingRef.current += 1; setIsStarting(false); setVoiceStatus("已取消启动"); return; }
+    if (microphoneRef.current) {
+      await stopMicrophone(); setVoiceStatus("语音输入已结束");
       return;
     }
     if (!selectedSession) return;
     if (!controller.preferences.installedModels.some((item) => item.status === "ready")) { setVoiceStatus("请先在设置中下载本地转写模型"); return; }
+    const request = ++startingRef.current;
+    setIsStarting(true);
+    let acquiredStream: MediaStream | undefined;
+    let acquiredContext: AudioContext | undefined;
     try {
       const model = controller.preferences.installedModels.find((item) => item.status === "ready");
       if (!model) return;
       setVoiceStatus("正在预热本地转写模型…");
       await localTranscriptionRuntime.install(model.id);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (request !== startingRef.current) return;
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前环境不支持麦克风，请使用本地应用或上传录音");
+      const stream = acquiredStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (request !== startingRef.current) { stream.getTracks().forEach((track) => track.stop()); return; }
       const context = new AudioContext(); const source = context.createMediaStreamSource(stream); const processor = context.createScriptProcessor(4096, 1, 1);
-      microphoneRef.current = { stream, context, processor, source, chunks: [], sampleRate: context.sampleRate, busy: false, stopping: false, processing: null };
+      acquiredContext = context;
+      microphoneRef.current = { stream, context, processor, source, chunks: [], sampleRate: context.sampleRate, busy: false, stopping: false, processing: null, sessionId: selectedSession.id, modelId: model.id };
       processor.onaudioprocess = (event) => { const current = microphoneRef.current; if (!current) return; current.chunks.push(event.inputBuffer.getChannelData(0).slice()); void processVoiceChunks(); };
-      source.connect(processor); processor.connect(context.destination); setIsListening(true); setVoiceStatus("正在聆听，约 1.5 秒更新一次文字");
-    } catch (error) { setVoiceStatus(error instanceof Error ? error.message : "无法访问麦克风"); }
+      source.connect(processor); processor.connect(context.destination); setIsListening(true); setVoiceStatus("正在聆听，分段离线识别；速度取决于模型与设备");
+    } catch (error) { acquiredStream?.getTracks().forEach((track) => track.stop()); void acquiredContext?.close(); setVoiceStatus(error instanceof Error ? error.message : "无法访问麦克风"); }
+    finally { if (request === startingRef.current) setIsStarting(false); }
   };
 
   return (
@@ -238,7 +260,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
         <aside className="session-rail">
           <div className="session-rail-title"><span>历史会话</span><strong>{sessions.length}</strong></div>
           <label className="session-search"><Search size={13} /><input value={search} placeholder="搜索标题或内容" onChange={(event) => setSearch(event.target.value)} /></label>
-          <div className="session-list">
+          <label><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />显示归档会话</label><div className="session-list">
             {sessions.map((session) => (
               <button
                 className={selectedSession?.id === session.id ? "session-item active" : "session-item"}
@@ -256,13 +278,13 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
         </aside>
 
         <section className="editor-panel">
-          <div className="editor-toolbar">
+          {selectedSession ? <div className="quick-actions"><button type="button" onClick={() => { const title = window.prompt("会话名称", selectedSession.title); if (title?.trim()) controller.updateSession(selectedSession.id, (session) => ({ ...session, title: title.trim() })); }}>重命名</button><button type="button" onClick={() => controller.updateSession(selectedSession.id, (session) => ({ ...session, status: session.status === "archived" ? "active" : "archived" }))}>{selectedSession.status === "archived" ? "恢复会话" : "归档"}</button></div> : null}<div className="editor-toolbar">
             <div className="segmented-control">
               {(["汇报", "复盘"] as const).map((item) => (
                 <button className={mode === item ? "active" : ""} type="button" key={item} onClick={() => changeMode(item)}>{item}</button>
               ))}
             </div>
-            <button className={isListening ? "icon-button recording" : "icon-button"} type="button" aria-label={isListening ? "停止语音输入" : "开始语音输入"} onClick={() => void toggleMicrophone()}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button>
+            <button className={isListening ? "icon-button recording" : "icon-button"} type="button" aria-label={isStarting ? "取消启动语音" : isListening ? "停止语音输入" : "开始语音输入"} onClick={() => void toggleMicrophone()}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button>
           </div>
           <textarea
             className="expression-input"
@@ -280,18 +302,19 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
         <aside className="analysis-panel">
           <div className="analysis-heading">
             <span><Sparkles size={16} /> 即时标注</span>
-            <strong>{Math.max(60, 94 - findings.length * 4)}</strong>
+            <strong>{findings.length} 处提示</strong>
           </div>
-          <div className="annotated-preview">
+          <p className="empty-session-copy">{mode === "复盘" ? "复盘标准：事实、结果差距、根因、行动与验证" : "汇报标准：结论、依据、风险、支持与下一步"}</p><div className="annotated-preview">
             <HighlightedText text={text} findings={findings} />
           </div>
           <div className="annotation-list">
             {findings.map((finding) => {
               const tone = findingTone(finding);
+              const safeReplacement = ["GEN-032", "GEN-037"].includes(finding.ruleId) ? finding.replacements[0] : undefined;
               return (
                 <div className="annotation-item" key={`${finding.ruleId}-${finding.range.start}`}>
                   <span className={`annotation-key ${tone}`}>{finding.matchedText}</span>
-                  <div><strong>{finding.issueType}</strong><p>{finding.reason} {finding.suggestion}</p><div className="finding-actions"><button type="button" onClick={() => finding.replacements[0] ? acceptFinding(finding) : setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><Check size={12} /> {finding.replacements[0] ? `改为“${finding.replacements[0]}”` : "采纳建议"}</button><button type="button" onClick={() => setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><X size={12} /> 忽略</button></div></div>
+                  <div><strong>{finding.issueType}</strong><p>{finding.reason} {finding.suggestion}</p><small>依据：{finding.source.ref} · AI 生成规则 · {finding.ruleId}</small><div className="finding-actions"><button type="button" onClick={() => safeReplacement ? acceptFinding(finding) : setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><Check size={12} /> {safeReplacement ? `改为“${safeReplacement}”` : "已阅建议"}</button><button type="button" onClick={() => setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><X size={12} /> 忽略</button></div></div>
                 </div>
               );
             })}
@@ -300,7 +323,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
             ) : null}
           </div>
           {voiceStatus.includes("设置") ? <button className="recovery-link" type="button" onClick={() => controller.navigate("settings")}>前往设置下载模型</button> : null}
-          {selectedSession?.report ? <div className="session-review"><p className="eyebrow">本次复盘</p><strong>{selectedSession.report.overallScore} 分</strong><p>{selectedSession.report.improvements[0] ?? selectedSession.report.strengths[0]}</p><button type="button" onClick={() => { const plan = controller.trainingPlans.find((item) => item.status === "active") ?? controller.trainingPlans[0]; if (!plan) { controller.navigate("training"); return; } controller.upsertTrainingPlan({ ...plan, tasks: [...plan.tasks, { id: `task-${crypto.randomUUID()}`, title: `复盘：${selectedSession.title}`, description: selectedSession.report?.actionItems[0] ?? "再次完成同场景练习", scenarioId: selectedSession.scenarioId, targetMinutes: 10, status: "todo" }], updatedAt: new Date().toISOString() }); }}>加入训练计划</button></div> : null}
+          {selectedSession?.report ? <div className="session-review"><p className="eyebrow">本次复盘</p><strong>{selectedSession.report.overallScore} 分 · 本地规则参考，非能力测评</strong><p>{selectedSession.report.improvements[0] ?? selectedSession.report.strengths[0]}</p><button type="button" onClick={() => { const plan = controller.trainingPlans.find((item) => item.status === "active" && item.scenarioId === selectedSession.scenarioId); if (!plan) { controller.navigate("training"); return; } controller.upsertTrainingPlan({ ...plan, linkedSessionIds: [...new Set([...(plan.linkedSessionIds ?? []), selectedSession.id])], tasks: [...plan.tasks, { id: `task-${crypto.randomUUID()}`, title: `复盘：${selectedSession.title}`, description: selectedSession.report?.actionItems[0] ?? "再次完成同场景练习", scenarioId: selectedSession.scenarioId, targetMinutes: 10, status: "todo" }], updatedAt: new Date().toISOString() }); }}>加入训练计划</button></div> : null}
           {selectedSession ? <button className="delete-session" type="button" onClick={() => { if (window.confirm(`删除会话“${selectedSession.title}”？`)) controller.deleteSession(selectedSession.id); }}><Trash2 size={13} /> 删除当前会话</button> : null}
         </aside>
       </div>

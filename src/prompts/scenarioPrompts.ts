@@ -26,7 +26,7 @@ const recordingScenarioInstructions: Record<RecordingAnalysisScenario, { role: s
   },
 };
 
-export function buildInterviewQuestionPrompt(jobDescription: string, resume: string): PromptMessage[] {
+export function buildInterviewQuestionPrompt(jobDescription: string, resume: string, followUp?: { question: string; answer: string }): PromptMessage[] {
   return [
     {
       role: "system",
@@ -34,7 +34,7 @@ export function buildInterviewQuestionPrompt(jobDescription: string, resume: str
     },
     {
       role: "user",
-      content: `JD：\n${jobDescription}\n\n简历：\n${resume}\n\n生成 6 道有区分度的问题。每道题必须能追溯到 JD 要求或简历经历，避免泛泛而问。返回 {"questions":[{"tag":"","text":"","suggestedMinutes":3,"jdEvidence":"JD原文片段"}]}。`,
+      content: `JD：\n${jobDescription}\n\n简历：\n${resume}\n\n${followUp ? `当前问题：${followUp.question}\n当前回答：${followUp.answer}\n针对回答中的证据缺口或决策理由生成2道追问。` : "生成6道有区分度的问题。"}每道题必须能追溯到 JD 要求或简历经历，避免泛泛而问。返回 {"questions":[{"tag":"","text":"","suggestedMinutes":3,"jdEvidence":"JD原文片段"}]}。`,
     },
   ];
 }

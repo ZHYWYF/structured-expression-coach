@@ -9,6 +9,8 @@ import { TrainingPlan } from "./components/TrainingPlan";
 import type { SectionId } from "./components/types";
 import { useWorkspace } from "./core/useWorkspace";
 import type { WorkspacePage } from "./core/types";
+import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const sectionToPage: Record<SectionId, WorkspacePage> = {
   home: "home",
@@ -33,6 +35,20 @@ export default function App() {
   const controller = useWorkspace();
   const activeSection = pageToSection[controller.currentPage];
   const navigate = (section: SectionId) => controller.navigate(sectionToPage[section]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    let closing = false;
+    void getCurrentWindow().onCloseRequested(async (event) => {
+      if (closing) return;
+      event.preventDefault();
+      try { await controller.flush(); closing = true; await getCurrentWindow().destroy(); }
+      catch { window.alert("本地保存失败，已保留窗口。请重试保存后再退出。"); }
+    }).then((off) => { if (disposed) off(); else unlisten = off; });
+    return () => { disposed = true; unlisten?.(); };
+  }, [controller.flush]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -67,9 +83,11 @@ export default function App() {
     <AppShell
       active={activeSection}
       onNavigate={navigate}
-      saveState={controller.persistenceError ? "保存异常" : controller.isSaving ? "正在保存" : controller.isHydrated ? "已保存到本地" : "正在载入"}
+      saveState={controller.persistenceError ? "保存异常" : controller.isSaving ? "正在保存" : controller.hasUnsavedChanges ? "有未保存更改" : "已保存到本地"}
       completedTrainingCount={controller.trainingPlans.flatMap((plan) => plan.tasks).filter((task) => task.status === "done").length}
     >
+      {controller.persistenceError ? <div className="action-notice" role="alert">{controller.persistenceError}</div> : null}
+      {controller.hasUnsavedChanges ? <button type="button" className="button-secondary" onClick={() => void controller.flush().catch(() => undefined)}>保存到本地</button> : null}
       {renderSection()}
     </AppShell>
   );

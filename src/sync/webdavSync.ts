@@ -1,9 +1,10 @@
 import type { RecordingTask, Session, Tombstone, TrainingPlan, WorkspaceState } from "../core/types";
 import { loadAudioFile, saveAudioFile } from "../transcription/audioStore";
 import { appFetch } from "../providers/http";
+import { validateSyncWorkspace } from "../core/storage";
 
 interface SyncCredentials { endpoint: string; username: string; password: string }
-interface SyncResult { workspace: WorkspaceState; uploadedAudio: number; downloadedAudio: number; conflicts: number }
+interface SyncResult { workspace: WorkspaceState; uploadedAudio: number; downloadedAudio: number; conflicts: number; warnings: string[] }
 
 function authorization(credentials: SyncCredentials): string {
   return `Basic ${btoa(unescape(encodeURIComponent(`${credentials.username}:${credentials.password}`)))}`;
@@ -14,16 +15,19 @@ function baseUrl(endpoint: string): string {
   if (url.protocol !== "https:" && !(isLocal && url.protocol === "http:")) throw new Error("同步地址必须使用 HTTPS；仅本机 localhost 允许 HTTP");
   return endpoint.replace(/\/+$/, "");
 }
-function requestHeaders(credentials: SyncCredentials, contentType?: string): HeadersInit {
+function requestHeaders(credentials: SyncCredentials, contentType?: string): Record<string, string> {
   return { Authorization: authorization(credentials), ...(contentType ? { "Content-Type": contentType } : {}) };
 }
 function isWorkspace(value: unknown): value is WorkspaceState {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<WorkspaceState>;
-  return item.version === 2 && Array.isArray(item.sessions) && Array.isArray(item.trainingPlans) && Array.isArray(item.recordingTasks) && Array.isArray(item.tombstones) && Boolean(item.preferences);
+  return validateSyncWorkspace(value);
 }
 function updatedAfter(value: { updatedAt: string }, timestamp: string | null): boolean {
   return !timestamp || Date.parse(value.updatedAt) > Date.parse(timestamp);
+}
+function comparable(value: unknown): string {
+  if (Array.isArray(value)) return "[" + value.map(comparable).join(",") + "]";
+  if (value && typeof value === "object") return "{" + Object.entries(value).filter(([key]) => !["remoteAudioId", "audioPath"].includes(key)).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => JSON.stringify(key) + ":" + comparable(item)).join(",") + "}";
+  return JSON.stringify(value);
 }
 function conflictCopy<T extends { id: string; title: string; updatedAt: string }>(value: T, deviceName: string): T {
   return { ...value, id: `${value.id}-conflict-${crypto.randomUUID()}`, title: `${value.title}（来自 ${deviceName || "另一设备"} 的冲突副本）` };
@@ -37,7 +41,7 @@ function mergeEntities<T extends { id: string; title: string; updatedAt: string 
     if (!localItem) { result.set(remoteItem.id, remoteItem); continue; }
     const localChanged = updatedAfter(localItem, lastSyncedAt);
     const remoteChanged = updatedAfter(remoteItem, lastSyncedAt);
-    if (localChanged && remoteChanged && JSON.stringify(localItem) !== JSON.stringify(remoteItem)) {
+    if (localChanged && remoteChanged && comparable(localItem) !== comparable(remoteItem)) {
       const copy = conflictCopy(remoteItem, remoteDevice);
       result.set(copy.id, copy); conflictIds.set(remoteItem.id, copy.id); conflicts += 1;
     } else if (Date.parse(remoteItem.updatedAt) > Date.parse(localItem.updatedAt)) result.set(remoteItem.id, remoteItem);
@@ -55,16 +59,21 @@ function mergeTombstones(local: Tombstone[], remote: Tombstone[]): Tombstone[] {
 }
 function removeDeleted<T extends { id: string; updatedAt: string }>(items: T[], tombstones: Tombstone[], entityType: Tombstone["entityType"]): T[] {
   const deleted = new Map(tombstones.filter((item) => item.entityType === entityType).map((item) => [item.entityId, item.deletedAt]));
-  return items.filter((item) => !deleted.has(item.id) || Date.parse(item.updatedAt) > Date.parse(deleted.get(item.id)!));
+  return items.filter((item) => !deleted.has(item.id));
 }
-function mergeWorkspace(local: WorkspaceState, remote: WorkspaceState): { workspace: WorkspaceState; conflicts: number } {
+export function mergeWorkspace(local: WorkspaceState, remote: WorkspaceState): { workspace: WorkspaceState; conflicts: number } {
   const lastSync = local.preferences.sync.lastSyncedAt;
   const tombstones = mergeTombstones(local.tombstones, remote.tombstones);
   const sessions = mergeEntities<Session>(removeDeleted(local.sessions, tombstones, "session"), removeDeleted(remote.sessions, tombstones, "session"), lastSync, remote.preferences.sync.deviceName);
   const remoteRecordings = removeDeleted(remote.recordingTasks, tombstones, "recording").map((task) => ({ ...task, sessionId: sessions.conflictIds.get(task.sessionId) ?? task.sessionId, remoteAudioId: task.remoteAudioId ?? task.id }));
   const recordings = mergeEntities<RecordingTask>(removeDeleted(local.recordingTasks, tombstones, "recording"), remoteRecordings, lastSync, remote.preferences.sync.deviceName);
   const conflictSessionIds = new Set(sessions.conflictIds.values());
-  const mergedSessions = sessions.items.map((session) => conflictSessionIds.has(session.id) ? { ...session, recordingTaskIds: session.recordingTaskIds.map((id) => recordings.conflictIds.get(id) ?? id) } : session);
+  const mergedSessions = sessions.items.map((session) => conflictSessionIds.has(session.id) ? { ...session,
+    statements: session.statements.map((item) => ({ ...item, sessionId: session.id })),
+    messages: session.messages.map((item) => ({ ...item, sessionId: session.id })),
+    feedback: session.feedback.map((item) => ({ ...item, sessionId: session.id })),
+    report: session.report ? { ...session.report, sessionId: session.id } : undefined,
+    recordingTaskIds: session.recordingTaskIds.map((id) => recordings.conflictIds.get(id) ?? id) } : session);
   const plans = mergeEntities<TrainingPlan>(removeDeleted(local.trainingPlans, tombstones, "training-plan"), removeDeleted(remote.trainingPlans, tombstones, "training-plan"), lastSync, remote.preferences.sync.deviceName);
   return {
     conflicts: sessions.conflicts + plans.conflicts + recordings.conflicts,
@@ -74,7 +83,7 @@ function mergeWorkspace(local: WorkspaceState, remote: WorkspaceState): { worksp
       trainingPlans: plans.items,
       recordingTasks: recordings.items,
       tombstones,
-      selectedSessionId: local.selectedSessionId ?? sessions.items[0]?.id ?? null,
+      selectedSessionId: sessions.items.some((session) => session.id === local.selectedSessionId) ? local.selectedSessionId : sessions.items[0]?.id ?? null,
       preferences: { ...remote.preferences, ...local.preferences, installedModels: local.preferences.installedModels, sync: local.preferences.sync },
       updatedAt: new Date().toISOString(),
     },
@@ -107,6 +116,7 @@ export async function syncWorkspace(local: WorkspaceState, credentials: SyncCred
 
   let uploadedAudio = 0;
   let downloadedAudio = 0;
+  const warnings: string[] = [];
   const recordingTasks = merged.workspace.recordingTasks.map((task) => ({ ...task }));
   for (const task of recordingTasks) {
     const localFile = await loadAudioFile(task.id);
@@ -118,7 +128,7 @@ export async function syncWorkspace(local: WorkspaceState, credentials: SyncCred
         const blob = await response.blob();
         await saveAudioFile(task.id, new File([blob], task.sourceFileName ?? task.title, { type: blob.type }));
         downloadedAudio += 1;
-      }
+      } else { warnings.push(`“${task.title}”原始音频未同步（${response.status}），请从保留原件的设备重试。`); }
     }
   }
   for (const task of recordingTasks) {
@@ -130,7 +140,17 @@ export async function syncWorkspace(local: WorkspaceState, credentials: SyncCred
     uploadedAudio += 1;
   }
   const now = new Date().toISOString();
-  const workspace = { ...merged.workspace, recordingTasks, preferences: { ...merged.workspace.preferences, sync: { ...merged.workspace.preferences.sync, status: "idle" as const, lastSyncedAt: now, errorMessage: undefined } }, updatedAt: now };
-  await put(credentials, "workspace.json", JSON.stringify(remoteWorkspace(workspace)), "application/json");
-  return { workspace, uploadedAudio, downloadedAudio, conflicts: merged.conflicts };
+  const etag = remoteResponse.headers.get("etag");
+  const conditionalHeaders: Record<string, string> = remoteResponse.status === 404 ? { "If-None-Match": "*" } : { "If-Match": etag ?? "*" };
+  if (remoteResponse.ok && !etag) {
+    // Some WebDAV services omit ETag. Never call this a completed safe sync.
+    warnings.push("同步服务未提供 ETag，并发覆盖保护不可用；本次仅合并到本地，未覆盖远端工作区。");
+  }
+  const workspace: WorkspaceState = { ...merged.workspace, recordingTasks, preferences: { ...merged.workspace.preferences, sync: { ...merged.workspace.preferences.sync, status: warnings.length ? "error" : "idle", lastSyncedAt: warnings.length ? local.preferences.sync.lastSyncedAt : now, errorMessage: warnings.join(" ") || undefined } }, updatedAt: now };
+  if (!warnings.length) {
+    const response = await appFetch(`${baseUrl(credentials.endpoint)}/workspace.json`, { method: "PUT", headers: { ...requestHeaders(credentials, "application/json"), ...conditionalHeaders }, body: JSON.stringify(remoteWorkspace(workspace)) });
+    if (response.status === 412) throw new Error("另一台设备刚更新了数据，已停止覆盖。请再次同步以重新合并。");
+    if (!response.ok) throw new Error(`同步服务写入失败（${response.status}）`);
+  }
+  return { workspace, uploadedAudio, downloadedAudio, conflicts: merged.conflicts, warnings };
 }

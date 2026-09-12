@@ -7,6 +7,7 @@ const DATABASE_URL = "sqlite:structured-expression-coach.db";
 const LOCAL_WORKSPACE_KEY = "structured-expression-coach:workspace:v1";
 const LOCAL_SESSIONS_KEY = "structured-expression-coach:sessions:v1";
 const WORKSPACE_ID = "default";
+const ATOMIC_WORKSPACE_KEY = "structured-expression-coach:atomic-workspace:v2";
 
 export interface Repository {
   readonly kind: "sqlite" | "localStorage";
@@ -165,26 +166,44 @@ function isSession(value: unknown): value is Session {
 }
 
 function recoverInterruptedRecordings(workspace: WorkspaceState): WorkspaceState {
-  const staleBefore = Date.now() - 5 * 60 * 1000;
   return {
     ...workspace,
+    preferences: {
+      ...workspace.preferences,
+      sync: { ...workspace.preferences.sync, status: workspace.preferences.sync.status === "syncing" ? "idle" : workspace.preferences.sync.status },
+      installedModels: workspace.preferences.installedModels.map((model) => ["downloading", "verifying"].includes(model.status) ? { ...model, status: "paused", errorMessage: "上次下载已中断，可继续下载。" } : model),
+    },
     recordingTasks: workspace.recordingTasks.map((task) => {
-      const updatedAt = Date.parse(task.updatedAt);
       const isInterrupted =
-        (task.status === "recording" || task.status === "transcribing") &&
-        (!Number.isFinite(updatedAt) || updatedAt < staleBefore);
+        task.status === "recording" || task.status === "transcribing";
       return isInterrupted
         ? {
             ...task,
             status: "failed",
             errorMessage: "上次任务已中断，可重新开始转写。",
           }
-        : task;
+        : task.reportStatus === "generating" ? { ...task, reportStatus: "failed", errorMessage: "上次报告生成已中断，可重新生成。" } : task;
     }),
   };
 }
 
+export function validateSyncWorkspace(value: unknown): value is WorkspaceState {
+  if (!isPersistedWorkspaceState(value) || !isRecord(value) || !Array.isArray(value.sessions)) return false;
+  const validTime = (item: Record<string, unknown>) => typeof item.updatedAt === "string" && Number.isFinite(Date.parse(item.updatedAt));
+  const stringList = (list: unknown) => Array.isArray(list) && list.every((item) => typeof item === "string");
+  if (!value.sessions.every((session) => isSession(session) && validTime(session as unknown as Record<string, unknown>))) return false;
+  const workspace = value as unknown as WorkspaceState;
+  return workspace.trainingPlans.every((plan) => isRecord(plan) && typeof plan.id === "string" && typeof plan.title === "string" && validTime(plan) && stringList(plan.goals) && stringList(plan.focusAreas) && Array.isArray(plan.tasks) && plan.tasks.every((task) => isRecord(task) && typeof task.id === "string" && typeof task.title === "string" && typeof task.targetMinutes === "number")) &&
+    workspace.recordingTasks.every((task) => isRecord(task) && typeof task.id === "string" && typeof task.title === "string" && typeof task.sessionId === "string" && validTime(task) && (task.transcript === undefined || typeof task.transcript === "string")) &&
+    workspace.tombstones.every((item) => isRecord(item) && ["session", "recording", "training-plan"].includes(String(item.entityType)) && typeof item.entityId === "string" && typeof item.deletedAt === "string" && Number.isFinite(Date.parse(item.deletedAt))) &&
+    workspace.scenarios.every((item) => isRecord(item) && typeof item.id === "string" && typeof item.title === "string") &&
+    [workspace.preferences.aiProvider, workspace.preferences.onlineAsrProvider].every((provider) => typeof provider.baseUrl === "string" && typeof provider.model === "string" && typeof provider.enabled === "boolean") &&
+    typeof workspace.preferences.sync.deviceName === "string";
+}
+
 function parseWorkspace(storage: Storage): WorkspaceState | null {
+  const atomic = parseJson<WorkspaceState>(storage.getItem(ATOMIC_WORKSPACE_KEY));
+  if (atomic && Array.isArray(atomic.sessions)) return hydrateWorkspace(atomic, atomic.sessions.filter(isSession));
   const shell = parseJson<unknown>(storage.getItem(LOCAL_WORKSPACE_KEY));
   const sessionValue = parseJson<unknown>(storage.getItem(LOCAL_SESSIONS_KEY));
   const sessions = Array.isArray(sessionValue) ? sessionValue.filter(isSession) : [];
@@ -206,7 +225,7 @@ class LocalStorageRepository implements Repository {
   async initialize(seed = createEmptyWorkspace()): Promise<void> {
     const storage = this.storage;
     if (!storage) return;
-    if (!storage.getItem(LOCAL_WORKSPACE_KEY)) {
+    if (!storage.getItem(ATOMIC_WORKSPACE_KEY) && !storage.getItem(LOCAL_WORKSPACE_KEY)) {
       await this.saveWorkspace(seed);
     }
   }
@@ -219,15 +238,14 @@ class LocalStorageRepository implements Repository {
 
   async saveWorkspace(workspace: WorkspaceState): Promise<void> {
     const storage = this.storage;
-    if (!storage) return;
-    storage.setItem(LOCAL_WORKSPACE_KEY, JSON.stringify(workspaceWithoutSessions(workspace)));
-    storage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(workspace.sessions));
+    if (!storage) throw new Error("当前设备本地存储不可用，内容尚未保存");
+    storage.setItem(ATOMIC_WORKSPACE_KEY, JSON.stringify(workspace));
   }
 
   async listSessions(): Promise<Session[]> {
     const storage = this.storage;
     if (!storage) return [];
-    return clone(parseJson<Session[]>(storage.getItem(LOCAL_SESSIONS_KEY)) ?? []);
+    return clone(parseWorkspace(storage)?.sessions ?? []);
   }
 
   async getSession(id: string): Promise<Session | null> {
@@ -240,12 +258,14 @@ class LocalStorageRepository implements Repository {
     const index = sessions.findIndex((item) => item.id === session.id);
     if (index >= 0) sessions[index] = clone(session);
     else sessions.push(clone(session));
-    this.storage?.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(sessions));
+    const current = await this.loadWorkspace();
+    if (current) await this.saveWorkspace({ ...current, sessions });
   }
 
   async deleteSession(id: string): Promise<void> {
     const sessions = (await this.listSessions()).filter((session) => session.id !== id);
-    this.storage?.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(sessions));
+    const current = await this.loadWorkspace();
+    if (current) await this.saveWorkspace({ ...current, sessions });
   }
 }
 
@@ -260,6 +280,7 @@ interface SessionRow {
 class SqliteRepository implements Repository {
   readonly kind = "sqlite" as const;
   private db: Database | null = null;
+  private saves: Promise<void> = Promise.resolve();
 
   private async database(): Promise<Database> {
     if (!this.db) this.db = await Database.load(DATABASE_URL);
@@ -298,32 +319,33 @@ class SqliteRepository implements Repository {
       [WORKSPACE_ID],
     );
     const shell = parseJson<unknown>(rows[0]?.payload ?? null);
+    if (isRecord(shell) && Array.isArray(shell.sessions)) return hydrateWorkspace(shell, shell.sessions.filter(isSession));
     return hydrateWorkspace(shell, await this.listSessions());
   }
 
   async saveWorkspace(workspace: WorkspaceState): Promise<void> {
-    const db = await this.database();
-    const shell = workspaceWithoutSessions(workspace);
-    await db.execute(
+    // A single SQLite statement commits the complete snapshot atomically.
+    // plugin-sql uses a pool; issuing separate BEGIN/COMMIT calls would not
+    // guarantee that statements run on the same connection.
+    const payload = JSON.stringify(workspace);
+    const task = this.saves.catch(() => undefined).then(async () => {
+      const db = await this.database();
+      await db.execute(
       `INSERT INTO workspace_state (id, payload, updated_at)
        VALUES ($1, $2, $3)
        ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
-      [WORKSPACE_ID, JSON.stringify(shell), workspace.updatedAt],
+      [WORKSPACE_ID, payload, workspace.updatedAt],
     );
-
-    for (const session of workspace.sessions) await this.saveSession(session);
-
-    const ids = workspace.sessions.map((session) => session.id);
-    if (ids.length === 0) {
-      await db.execute("DELETE FROM sessions");
-    } else {
-      const placeholders = ids.map((_, index) => `$${index + 1}`).join(", ");
-      await db.execute(`DELETE FROM sessions WHERE id NOT IN (${placeholders})`, ids);
-    }
+    });
+    this.saves = task;
+    return task;
   }
 
   async listSessions(): Promise<Session[]> {
     const db = await this.database();
+    const state = await db.select<WorkspaceRow[]>("SELECT payload FROM workspace_state WHERE id = $1 LIMIT 1", [WORKSPACE_ID]);
+    const snapshot = parseJson<WorkspaceState>(state[0]?.payload ?? null);
+    if (snapshot && Array.isArray(snapshot.sessions)) return snapshot.sessions.filter(isSession);
     const rows = await db.select<SessionRow[]>(
       "SELECT payload FROM sessions ORDER BY updated_at DESC",
     );
@@ -334,32 +356,17 @@ class SqliteRepository implements Repository {
   }
 
   async getSession(id: string): Promise<Session | null> {
-    const db = await this.database();
-    const rows = await db.select<SessionRow[]>(
-      "SELECT payload FROM sessions WHERE id = $1 LIMIT 1",
-      [id],
-    );
-    const session = parseJson<unknown>(rows[0]?.payload ?? null);
-    return isSession(session) ? session : null;
+    return (await this.listSessions()).find((session) => session.id === id) ?? null;
   }
 
   async saveSession(session: Session): Promise<void> {
-    const db = await this.database();
-    await db.execute(
-      `INSERT INTO sessions (id, kind, title, payload, updated_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT(id) DO UPDATE SET
-         kind = excluded.kind,
-         title = excluded.title,
-         payload = excluded.payload,
-         updated_at = excluded.updated_at`,
-      [session.id, session.kind, session.title, JSON.stringify(session), session.updatedAt],
-    );
+    const current = await this.loadWorkspace();
+    if (current) await this.saveWorkspace({ ...current, sessions: current.sessions.some((item) => item.id === session.id) ? current.sessions.map((item) => item.id === session.id ? clone(session) : item) : [...current.sessions, clone(session)] });
   }
 
   async deleteSession(id: string): Promise<void> {
-    const db = await this.database();
-    await db.execute("DELETE FROM sessions WHERE id = $1", [id]);
+    const current = await this.loadWorkspace();
+    if (current) await this.saveWorkspace({ ...current, sessions: current.sessions.filter((session) => session.id !== id) });
   }
 }
 

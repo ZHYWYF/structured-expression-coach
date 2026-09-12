@@ -16,11 +16,11 @@ function formatToday(): string {
 }
 
 export function HomePage({ controller, onNavigate }: { controller: WorkspaceController; onNavigate: (section: SectionId) => void }) {
-  const plan = controller.trainingPlans[0];
+  const plan = controller.trainingPlans.find((item) => item.status === "active");
   const completedTasks = plan?.tasks.filter((task) => task.status === "done").length ?? 0;
   const taskTotal = plan?.tasks.length ?? 0;
   const recentSession = [...controller.sessions]
-    .filter((session) => session.kind !== "interview")
+    .filter((session) => session.kind === "practice" && session.status !== "archived")
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
 
   const continueRecent = () => {
@@ -44,11 +44,12 @@ export function HomePage({ controller, onNavigate }: { controller: WorkspaceCont
           <h1>把想法说清楚，<br />从这一段开始。</h1>
           <p>选择一个真实场景，言序会在你表达的同时，标出可以立刻改善的部分。</p>
         </div>
-        <div className="daily-progress" aria-label="本周训练进度">
-          <span>本周训练</span>
+        <div className="daily-progress" aria-label="当前计划进度">
+          <span>当前计划</span>
           <strong>{completedTasks}<small>/{taskTotal}</small></strong>
           <div className="progress-track"><i style={{ width: `${taskTotal ? (completedTasks / taskTotal) * 100 : 0}%` }} /></div>
-          <em>{completedTasks === taskTotal && taskTotal ? "本周计划已完成" : `还有 ${Math.max(0, taskTotal - completedTasks)} 项训练待完成`}</em>
+          <em>{completedTasks === taskTotal && taskTotal ? "计划任务已完成" : `还有 ${Math.max(0, taskTotal - completedTasks)} 项训练待完成`}</em>
+          {plan ? <button type="button" onClick={() => onNavigate("training")}>继续训练：{plan.title}</button> : null}
         </div>
       </section>
 
@@ -115,10 +116,10 @@ export function HomePage({ controller, onNavigate }: { controller: WorkspaceCont
           <span className="voice-icon"><Mic2 size={20} /></span>
           <div>
             <p className="eyebrow">快速记录</p>
-            <h2>想到就说</h2>
-            <p>录下一段临时想法，稍后自动整理为表达报告。</p>
+            <h2>回听真实录音</h2>
+            <p>上传已有录音，转写校对并生成场景报告。</p>
           </div>
-          <button type="button" onClick={() => onNavigate("reports")}>开始录音</button>
+          <button type="button" onClick={() => onNavigate("reports")}>上传录音</button>
         </div>
       </section>
     </div>

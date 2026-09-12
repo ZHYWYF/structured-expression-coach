@@ -11,6 +11,8 @@ cd "$project_root"
 
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}"
+export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-2}"
+export GOMAXPROCS="${GOMAXPROCS:-2}"
 # Tauri 官方建议：没有 Apple Developer 证书时，至少使用 ad-hoc
 # 签名，避免从浏览器下载的 Apple Silicon 应用被判定为损坏。
 export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}"
@@ -35,6 +37,9 @@ dmg_path="$dmg_dir/言序_${app_version}_universal.dmg"
 codesign --verify --deep --strict --verbose=2 "$app_path"
 codesign --display --verbose=4 "$app_path"
 lipo -archs "$app_path/Contents/MacOS/structured-expression-coach"
+/usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app_path/Contents/Info.plist"
+test -s dist/runtime/ort-wasm-simd-threaded.jsep.wasm
+test -s dist/runtime/ort-wasm-simd-threaded.jsep.mjs
 
 # Tauri 的 bundle_dmg.sh 在 GitHub macOS runner 上存在偶发失败。
 # 应用本体完成签名校验后，直接使用 macOS 原生 hdiutil 生成标准安装盘。

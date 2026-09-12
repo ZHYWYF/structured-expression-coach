@@ -129,6 +129,7 @@ export interface TrainingTask {
   status: TrainingTaskStatus;
   dueDate?: string;
   completedAt?: ISODateTime;
+  sessionId?: Id;
 }
 
 export interface TrainingPlan {
@@ -142,6 +143,8 @@ export interface TrainingPlan {
   goals: string[];
   currentLevel: "beginner" | "intermediate" | "advanced";
   levelSource: TrainingLevelSource;
+  levelNotes?: string;
+  linkedSessionIds?: Id[];
   status: TrainingPlanStatus;
   tasks: TrainingTask[];
   createdAt: ISODateTime;
@@ -178,6 +181,7 @@ export interface SessionBase {
   scenarioId: Id;
   status: SessionStatus;
   draftText: string;
+  dismissedFindings?: string[];
   statements: Statement[];
   messages: Message[];
   feedback: Feedback[];
@@ -195,7 +199,7 @@ export interface InterviewSession extends SessionBase {
   activeQuestionIndex?: number;
   materialsLocked?: boolean;
   interviewQuestions?: InterviewQuestion[];
-  interviewFeedback?: Record<string, InterviewAnswerFeedback>;
+  interviewFeedback?: Record<string, InterviewAnswerFeedback | undefined>;
   materials: Material[];
 }
 

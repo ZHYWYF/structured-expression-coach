@@ -5,7 +5,7 @@ import type { ProviderConfiguration, WorkspacePreferences } from "../core/types"
 import { readDeviceSecret, testProviderConnection, writeDeviceSecret, type SecretKind } from "../providers/openAiCompatible";
 import { PageHeader } from "./ui";
 import { deleteCachedModel, localModelCatalog, localTranscriptionRuntime } from "../transcription/localRuntime";
-import { syncWorkspace, testSyncConnection } from "../sync/webdavSync";
+import { mergeWorkspace, syncWorkspace, testSyncConnection } from "../sync/webdavSync";
 import { createEmptyWorkspace } from "../core/defaultWorkspace";
 import { deleteAudioFile } from "../transcription/audioStore";
 import { knowledgeBaseStats } from "../knowledge";
@@ -16,6 +16,8 @@ type ConnectionState = { status: "idle" | "testing" | "success" | "error"; messa
 function ProviderForm({ title, description, kind, value, onChange }: { title: string; description: string; kind: Exclude<SecretKind, "sync">; value: ProviderConfiguration; onChange: (next: ProviderConfiguration) => void }) {
   const [apiKey, setApiKey] = useState("");
   const [isSecretLoading, setIsSecretLoading] = useState(true);
+  const [secretReadFailed, setSecretReadFailed] = useState(false);
+  const [secretEdited, setSecretEdited] = useState(false);
   const [connection, setConnection] = useState<ConnectionState>({ status: "idle", message: "尚未测试" });
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +30,7 @@ function ProviderForm({ title, description, kind, value, onChange }: { title: st
         if (cancelled) return;
         const message = error instanceof Error ? error.message : typeof error === "string" ? error : "读取凭证失败";
         setConnection({ status: "error", message });
+        setSecretReadFailed(true);
       })
       .finally(() => {
         if (!cancelled) setIsSecretLoading(false);
@@ -35,14 +38,19 @@ function ProviderForm({ title, description, kind, value, onChange }: { title: st
     return () => { cancelled = true; };
   }, [kind]);
   const save = async () => {
-    await writeDeviceSecret(kind, apiKey);
-    onChange(value);
-    setConnection({ status: "idle", message: "配置已保存到当前设备" });
+    if (secretReadFailed && !secretEdited) { setConnection({ status: "error", message: "凭证读取失败，已保留原密钥。请重新打开设置或填写新密钥。" }); return; }
+    try {
+      if (secretEdited) {
+        if (!apiKey.trim() && !window.confirm("确定删除当前设备保存的 API Key？")) return;
+        await writeDeviceSecret(kind, apiKey);
+      }
+      onChange(value);
+      setConnection({ status: "idle", message: "配置已保存到当前设备" });
+    } catch { setConnection({ status: "error", message: "凭证保存失败，原配置未被清空，请重试" }); }
   };
   const test = async () => {
     setConnection({ status: "testing", message: "正在连接" });
     try {
-      await writeDeviceSecret(kind, apiKey);
       const result = await testProviderConnection(value, apiKey, kind);
       setConnection(result.ok ? { status: "success", message: `连接成功 · ${result.latencyMs} ms` } : { status: "error", message: result.message });
     } catch (error) {
@@ -57,7 +65,7 @@ function ProviderForm({ title, description, kind, value, onChange }: { title: st
         <label><span>配置名称</span><input value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} /></label>
         <label><span>模型名称</span><input value={value.model} placeholder={kind === "ai" ? "例如：gpt-4.1-mini" : "例如：whisper-1"} onChange={(event) => onChange({ ...value, model: event.target.value })} /></label>
         <label className="full"><span>服务地址</span><input value={value.baseUrl} placeholder="https://api.example.com/v1" onChange={(event) => onChange({ ...value, baseUrl: event.target.value })} /></label>
-        <label className="full"><span>API Key（仅保存在当前设备，不参与同步）</span><input type="password" autoComplete="off" value={apiKey} disabled={isSecretLoading} placeholder={isSecretLoading ? "正在读取已保存的 API Key" : "输入 API Key"} onChange={(event) => setApiKey(event.target.value)} /></label>
+        <label className="full"><span>API Key（仅保存在当前设备，不参与同步）</span><input type="password" autoComplete="off" value={apiKey} disabled={isSecretLoading} placeholder={isSecretLoading ? "正在读取已保存的 API Key" : "输入 API Key"} onChange={(event) => { setApiKey(event.target.value); setSecretEdited(true); }} /></label>
       </div>
       <div className="settings-actions">
         <label className="inline-check"><input type="checkbox" checked={value.enabled} onChange={(event) => onChange({ ...value, enabled: event.target.checked })} /> 启用此配置</label>
@@ -76,15 +84,22 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
   const [syncMessage, setSyncMessage] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
   const modelsRef = useRef(preferences.installedModels);
-  useEffect(() => { void readDeviceSecret("sync").then(setSyncPassword); }, []);
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  const modelGeneration = useRef(new Map<string, number>());
+  const [syncSecretReady, setSyncSecretReady] = useState(false);
+  useEffect(() => { let cancelled = false; void readDeviceSecret("sync").then((value) => { if (!cancelled) { setSyncPassword(value); setSyncSecretReady(true); } }).catch(() => { if (!cancelled) setSyncMessage("同步凭证读取失败，已保留原密码，请重新打开设置。"); }); return () => { cancelled = true; }; }, []);
   useEffect(() => { modelsRef.current = preferences.installedModels; }, [preferences.installedModels]);
   const cycleTheme = () => {
     const next: WorkspacePreferences["theme"] = preferences.theme === "system" ? "light" : preferences.theme === "light" ? "dark" : "system";
     controller.updatePreferences({ theme: next });
   };
   const installModel = async (model: typeof localModelCatalog[number]) => {
+    const generation = (modelGeneration.current.get(model.id) ?? 0) + 1;
+    modelGeneration.current.set(model.id, generation);
     const current = preferences.installedModels.find((item) => item.id === model.id);
     const update = (patch: Partial<NonNullable<typeof current>> & { status: "downloading" | "paused" | "verifying" | "ready" | "failed"; progress: number }) => {
+      if (modelGeneration.current.get(model.id) !== generation) return;
       const existing = modelsRef.current.find((item) => item.id === model.id);
       const next = { id: model.id, label: model.label, fileName: model.id, sizeBytes: model.sizeBytes, ...existing, ...patch };
       modelsRef.current = [...modelsRef.current.filter((item) => item.id !== model.id), next];
@@ -103,29 +118,47 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
     }
   };
   const pauseModel = (id: string) => {
+    modelGeneration.current.set(id, (modelGeneration.current.get(id) ?? 0) + 1);
     localTranscriptionRuntime.cancelAll();
-    controller.updatePreferences({ installedModels: preferences.installedModels.map((item) => item.id === id ? { ...item, status: "paused" as const } : item) });
+    modelsRef.current = modelsRef.current.map((item) => item.id === id ? { ...item, status: "paused" as const } : item);
+    controller.updatePreferences({ installedModels: modelsRef.current });
   };
   const removeModel = async (id: string) => {
+    if (!window.confirm("删除这个模型？当前本地转写任务会停止。")) return;
+    modelGeneration.current.set(id, (modelGeneration.current.get(id) ?? 0) + 1);
     localTranscriptionRuntime.cancelAll("模型已删除");
-    await deleteCachedModel(id);
-    controller.updatePreferences({ installedModels: preferences.installedModels.filter((item) => item.id !== id) });
-    setModelMessage("模型缓存已从当前设备删除。");
+    try {
+      await deleteCachedModel(id);
+      modelsRef.current = modelsRef.current.filter((item) => item.id !== id);
+      controller.updatePreferences({ installedModels: modelsRef.current });
+      setModelMessage("模型缓存已从当前设备删除。");
+    } catch { setModelMessage("模型缓存删除失败，请重试。"); }
   };
   const syncCredentials = { endpoint: preferences.sync.endpoint, username: preferences.sync.account, password: syncPassword };
   const testSync = async () => {
-    setIsSyncing(true); setSyncMessage("正在连接同步服务"); await writeDeviceSecret("sync", syncPassword);
+    setIsSyncing(true); setSyncMessage("正在连接同步服务");
     try { await testSyncConnection(syncCredentials); setSyncMessage("同步服务连接成功"); }
     catch (error) { setSyncMessage(error instanceof Error ? error.message : "同步服务连接失败"); }
     finally { setIsSyncing(false); }
   };
   const runSync = async () => {
-    setIsSyncing(true); setSyncMessage("正在同步数据与录音"); await writeDeviceSecret("sync", syncPassword);
+    if (!syncSecretReady || !syncPassword.trim()) { setSyncMessage("请先填写可用的同步密码"); return; }
+    setIsSyncing(true); setSyncMessage("正在同步数据与录音");
     controller.updatePreferences({ sync: { ...preferences.sync, status: "syncing", errorMessage: undefined } });
     try {
-      const result = await syncWorkspace(controller, syncCredentials);
-      controller.replaceWorkspace(result.workspace);
-      setSyncMessage(`同步完成：上传 ${result.uploadedAudio} 段录音，下载 ${result.downloadedAudio} 段录音${result.conflicts ? `，保留 ${result.conflicts} 个冲突副本` : ""}`);
+      await writeDeviceSecret("sync", syncPassword);
+      await controller.flush();
+      const source = controllerRef.current.getSnapshot?.() ?? controllerRef.current;
+      const result = await syncWorkspace(source, syncCredentials);
+      const latest = controllerRef.current.getSnapshot?.() ?? controllerRef.current;
+      const changedDuringSync = latest.updatedAt !== source.updatedAt;
+      const reconciled = mergeWorkspace(latest, result.workspace).workspace;
+      reconciled.currentPage = latest.currentPage;
+      reconciled.preferences.sync = result.workspace.preferences.sync;
+      if (changedDuringSync) reconciled.preferences.sync = { ...reconciled.preferences.sync, lastSyncedAt: source.preferences.sync.lastSyncedAt };
+      controller.replaceWorkspace(reconciled);
+      await controller.flush();
+      setSyncMessage(result.warnings?.length ? `同步未完成：${result.warnings.join(" ")}` : changedDuringSync ? "已保留同步期间的新修改，请再次同步上传最新内容。" : `同步完成：上传 ${result.uploadedAudio} 段录音，下载 ${result.downloadedAudio} 段录音${result.conflicts ? `，保留 ${result.conflicts} 个冲突副本` : ""}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "同步失败";
       controller.updatePreferences({ sync: { ...preferences.sync, status: "error", errorMessage: message } });
@@ -133,10 +166,11 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
     } finally { setIsSyncing(false); }
   };
   const clearLocalData = async () => {
-    if (!window.confirm("确定删除当前设备上的全部会话、录音、报告和训练计划？此操作不可撤销。")) return;
-    await Promise.all(controller.recordingTasks.map((task) => deleteAudioFile(task.id).catch(() => undefined)));
+    if (!window.confirm("确定删除当前设备上的全部会话、录音、报告和训练计划？此操作不删除远端副本，再次同步会重新下载远端数据。")) return;
+    try { for (const task of controller.recordingTasks) await deleteAudioFile(task.id); }
+    catch { setSyncMessage("部分音频清理失败，已保留工作区记录，请重试。"); return; }
     const empty = createEmptyWorkspace();
-    empty.preferences = { ...empty.preferences, theme: preferences.theme, aiProvider: preferences.aiProvider, onlineAsrProvider: preferences.onlineAsrProvider, installedModels: preferences.installedModels, sync: preferences.sync };
+    empty.preferences = { ...empty.preferences, theme: preferences.theme, aiProvider: preferences.aiProvider, onlineAsrProvider: preferences.onlineAsrProvider, installedModels: preferences.installedModels, sync: { ...preferences.sync, lastSyncedAt: null, status: "idle" } };
     controller.replaceWorkspace(empty);
   };
   return (
@@ -156,9 +190,9 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
             <label className="full"><span>同步服务地址</span><input value={preferences.sync.endpoint} placeholder="填写你的私有同步服务地址" onChange={(event) => controller.updatePreferences({ sync: { ...preferences.sync, endpoint: event.target.value } })} /></label>
             <label><span>账号</span><input value={preferences.sync.account} placeholder="单用户账号" onChange={(event) => controller.updatePreferences({ sync: { ...preferences.sync, account: event.target.value } })} /></label>
             <label><span>设备名称</span><input value={preferences.sync.deviceName} placeholder="例如：我的 MacBook" onChange={(event) => controller.updatePreferences({ sync: { ...preferences.sync, deviceName: event.target.value } })} /></label>
-            <label className="full"><span>同步密码或应用专用密码（仅保存在当前设备）</span><input type="password" autoComplete="off" value={syncPassword} onChange={(event) => setSyncPassword(event.target.value)} /></label>
+            <label className="full"><span>同步密码或应用专用密码（仅保存在当前设备）</span><input type="password" autoComplete="off" value={syncPassword} onChange={(event) => { setSyncPassword(event.target.value); setSyncSecretReady(true); }} /></label>
           </div>
-          <div className="settings-actions"><span className="connection-state">{syncMessage || (preferences.sync.lastSyncedAt ? `上次同步：${new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(preferences.sync.lastSyncedAt))}` : "尚未同步")}</span><button className="button-secondary" type="button" disabled={isSyncing} onClick={() => void testSync()}><RefreshCw size={14} /> 测试连接</button><button className="button-primary compact-button" type="button" disabled={isSyncing} onClick={() => void runSync()}>{isSyncing ? <RefreshCw className="spin" size={14} /> : <Cloud size={14} />} 立即同步</button></div>
+          <div className="settings-actions"><span className="connection-state">{syncMessage || (preferences.sync.lastSyncedAt ? `上次同步：${new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(preferences.sync.lastSyncedAt))}` : "尚未同步")}</span><button className="button-secondary" type="button" disabled={isSyncing || !syncSecretReady} onClick={() => void testSync()}><RefreshCw size={14} /> 测试连接</button><button className="button-primary compact-button" type="button" disabled={isSyncing} onClick={() => void runSync()}>{isSyncing ? <RefreshCw className="spin" size={14} /> : <Cloud size={14} />} 立即同步</button></div>
         </section>
         <section className="settings-group">
           <div className="settings-group-heading"><ShieldCheck size={18} /><div><h2>数据与应用</h2><p>控制本地保存和界面偏好</p></div></div>
@@ -169,7 +203,7 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
           <SettingRow icon={Trash2} title="清理本地数据" value="删除会话、录音、报告和计划" onClick={() => void clearLocalData()} />
         </section>
       </div>
-      <footer className="settings-footer"><strong>言序 0.2.7</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
+      <footer className="settings-footer"><strong>言序 0.2.8</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
     </div>
   );
 }

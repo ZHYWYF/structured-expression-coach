@@ -1,6 +1,6 @@
 export const localModelCatalog = [
   { id: "onnx-community/whisper-large-v3-turbo", label: "Whisper Large V3 Turbo 高精度", sizeBytes: 850_000_000, recommendation: "适合重要面试和历史录音，下载约 0.8 GB" },
-  { id: "Xenova/whisper-small", label: "Whisper Small 平衡版", sizeBytes: 260_000_000, recommendation: "占用较低，适合较短录音和普通设备" },
+  { id: "Xenova/whisper-small", label: "Whisper Small 平衡版", sizeBytes: 310_000_000, recommendation: "占用较低，下载约 0.3 GB，适合较短录音和普通设备" },
 ] as const;
 
 interface WorkerResponse { id: string; type: "progress" | "loaded" | "result" | "error"; progress?: number; message?: string; text?: string; chunks?: Array<{ text?: string; timestamp?: [number, number] }> }

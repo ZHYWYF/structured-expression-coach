@@ -24,12 +24,16 @@ function apiUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
-async function responseError(response: Response): Promise<string> {
+function redact(value: string, secret = ""): string {
+  return (secret.length >= 3 ? value.split(secret).join("<REDACTED>") : value).replace(/Bearer\s+[^\s"'<>]+/gi, "Bearer <REDACTED>").replace(/\bsk-[A-Za-z0-9_-]{8,}/g, "<REDACTED>");
+}
+async function responseError(response: Response, secret = ""): Promise<string> {
   const text = await response.text();
   if (!text) return `服务返回 ${response.status}`;
   try {
     const parsed = JSON.parse(text) as { error?: { message?: string }; message?: string };
-    return parsed.error?.message ?? parsed.message ?? `服务返回 ${response.status}`;
+    const message = parsed.error?.message ?? parsed.message;
+    return typeof message === "string" ? redact(message, secret) : `服务返回 ${response.status}`;
   } catch {
     return `服务返回 ${response.status}`;
   }
@@ -72,10 +76,10 @@ export async function testProviderConnection(
       : await appFetch(apiUrl(configuration.baseUrl, "models"), {
           headers: { Authorization: `Bearer ${apiKey.trim()}` },
         });
-    if (!response.ok) return { ok: false, message: await responseError(response) };
+    if (!response.ok) return { ok: false, message: await responseError(response, apiKey) };
     return { ok: true, latencyMs: Math.round(performance.now() - startedAt) };
   } catch (error) {
-    return { ok: false, message: requestError(error) };
+    return { ok: false, message: redact(requestError(error), apiKey) };
   }
 }
 
@@ -100,9 +104,10 @@ export async function requestChatCompletion(
     },
     body: JSON.stringify({ model: configuration.model, messages, temperature: 0.2 }),
   });
-  if (!response.ok) throw new Error(await responseError(response));
+  if (!response.ok) throw new Error(await responseError(response, apiKey));
   const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-  const content = body.choices?.[0]?.message?.content?.trim();
+  const raw = body.choices?.[0]?.message?.content;
+  const content = typeof raw === "string" ? raw.trim() : "";
   if (!content) throw new Error("AI 服务没有返回有效内容");
   return content;
 }
@@ -125,8 +130,8 @@ export async function transcribeWithOnlineProvider(
     headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
   });
-  if (!response.ok) throw new Error(await responseError(response));
+  if (!response.ok) throw new Error(await responseError(response, apiKey));
   const body = await response.json() as { text?: string };
-  if (!body.text?.trim()) throw new Error("在线转写服务没有返回有效文本");
+  if (typeof body.text !== "string" || !body.text.trim()) throw new Error("在线转写服务没有返回有效文本");
   return body.text.trim();
 }
