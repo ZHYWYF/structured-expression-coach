@@ -1,4 +1,4 @@
-export { analyzeText, localKnowledgeBase } from "./analyzeText";
+export { analyzeText, knowledgeBaseStats, localKnowledgeBase, localKnowledgeRulePacks } from "./analyzeText";
 export type {
   AdvisoryRuleMetadata,
   AnalysisFinding,

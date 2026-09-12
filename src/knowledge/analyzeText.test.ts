@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeText, localKnowledgeBase } from "./index";
+import { analyzeText, knowledgeBaseStats, localKnowledgeBase, localKnowledgeRulePacks } from "./index";
 
 describe("analyzeText", () => {
   it("returns lexical findings with source details and exact ranges", () => {
@@ -103,7 +103,8 @@ describe("analyzeText", () => {
     expect(localKnowledgeBase.advisoryRuleCatalog.structural).toHaveLength(18);
     expect(localKnowledgeBase.advisoryRuleCatalog.semantic).toHaveLength(30);
     expect(localKnowledgeBase.runtime.mode).toBe("hybrid_local");
-    expect(localKnowledgeBase.runtime.executableRuleCount).toBe(40);
+    expect(localKnowledgeBase.runtime.executableRuleCount).toBe(65);
+    expect(knowledgeBaseStats).toEqual({ lexicalRuleCount: 57, lexicalPatternCount: 227, heuristicRuleCount: 8, executableRuleCount: 65, advisoryRuleCount: 48 });
     expect(localKnowledgeBase.runtime.disabledPendingDictionaryCandidates).toBe(
       321,
     );
@@ -113,5 +114,23 @@ describe("analyzeText", () => {
     expect(analyzeText("我们完成了项目，学到了很多。", "interview").map((item) => item.ruleId)).toEqual(expect.arrayContaining(["INT-021", "INT-023"]));
     expect(analyzeText("项目进展顺利，目前没有风险。", "report").map((item) => item.ruleId)).toEqual(expect.arrayContaining(["RPT-011", "RPT-013"]));
     expect(analyzeText("主要原因是沟通不到位，下次注意。", "retrospective").map((item) => item.ruleId)).toEqual(expect.arrayContaining(["RET-011", "RET-012"]));
+  });
+
+  it("runs the second generated knowledge pack across all coaching scenarios", () => {
+    expect(analyzeText("我性格开朗，负责相关工作，最后获得一致认可。", "interview").map((item) => item.ruleId)).toEqual(expect.arrayContaining(["INT-025", "INT-026", "INT-027"]));
+    expect(analyzeText("项目基本完成，但遇到一些问题，需要领导拍板。", "report").map((item) => item.ruleId)).toEqual(expect.arrayContaining(["RPT-015", "RPT-016", "RPT-017"]));
+    expect(analyzeText("需求总是变，以后不会了，我们要更加重视。", "retrospective").map((item) => item.ruleId)).toEqual(expect.arrayContaining(["RET-013", "RET-015", "RET-016"]));
+  });
+
+  it("keeps every executable knowledge rule identifiable and usable", () => {
+    const rules = localKnowledgeRulePacks.flat();
+    expect(new Set(rules.map((rule) => rule.id)).size).toBe(rules.length);
+    for (const rule of rules) {
+      expect(rule.patterns.length).toBeGreaterThan(0);
+      expect(rule.patterns.every((pattern) => pattern.trim().length >= 1)).toBe(true);
+      expect(rule.scenarios.length).toBeGreaterThan(0);
+      expect(rule.reason.trim()).not.toBe("");
+      expect(rule.suggestion.trim()).not.toBe("");
+    }
   });
 });

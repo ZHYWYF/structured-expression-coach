@@ -1,5 +1,6 @@
 import knowledgeBaseJson from "./data/local-knowledge.json";
 import generatedKnowledgeJson from "./data/generated-v1.json";
+import generatedKnowledgeV2Json from "./data/generated-v2.json";
 
 import type {
   AnalysisFinding,
@@ -196,8 +197,23 @@ function collectHeuristicMatches(text: string, scenario: KnowledgeScenario): Mat
   return findings;
 }
 
-export const localKnowledgeBase = knowledgeBaseJson as LocalKnowledgeBase;
+const baseKnowledgeBase = knowledgeBaseJson as LocalKnowledgeBase;
 const generatedLexicalRules = (generatedKnowledgeJson as { lexicalRules: LexicalKnowledgeRule[] }).lexicalRules;
+const generatedLexicalRulesV2 = (generatedKnowledgeV2Json as { lexicalRules: LexicalKnowledgeRule[] }).lexicalRules;
+const heuristicExecutableRuleCount = 8;
+export const localKnowledgeRulePacks = [baseKnowledgeBase.lexicalRules, generatedLexicalRules, generatedLexicalRulesV2] as const;
+const allLexicalRules = localKnowledgeRulePacks.flat();
+export const knowledgeBaseStats = {
+  lexicalRuleCount: allLexicalRules.length,
+  lexicalPatternCount: allLexicalRules.reduce((total, rule) => total + new Set(rule.patterns).size, 0),
+  heuristicRuleCount: heuristicExecutableRuleCount,
+  executableRuleCount: allLexicalRules.length + heuristicExecutableRuleCount,
+  advisoryRuleCount: baseKnowledgeBase.advisoryRuleCatalog.structural.length + baseKnowledgeBase.advisoryRuleCatalog.semantic.length,
+};
+export const localKnowledgeBase: LocalKnowledgeBase = {
+  ...baseKnowledgeBase,
+  runtime: { ...baseKnowledgeBase.runtime, executableRuleCount: knowledgeBaseStats.executableRuleCount },
+};
 
 function collectMatches(
   text: string,
@@ -293,7 +309,7 @@ export function analyzeText(
 
   return resolveOverlaps(
     [
-      ...collectMatches(text, scenario, [...localKnowledgeBase.lexicalRules, ...generatedLexicalRules]),
+      ...collectMatches(text, scenario, allLexicalRules),
       ...collectHeuristicMatches(text, scenario),
     ],
   );

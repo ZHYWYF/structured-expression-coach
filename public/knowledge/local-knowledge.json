@@ -5,7 +5,7 @@
   "reviewStatus": "sample_review",
   "runtime": {
     "mode": "hybrid_local",
-    "executableRuleCount": 40,
+    "executableRuleCount": 65,
     "metadataOnlyRuleCount": 40,
     "disabledPendingDictionaryCandidates": 321
   },

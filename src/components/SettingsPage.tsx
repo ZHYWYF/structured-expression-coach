@@ -8,6 +8,7 @@ import { deleteCachedModel, localModelCatalog, localTranscriptionRuntime } from 
 import { syncWorkspace, testSyncConnection } from "../sync/webdavSync";
 import { createEmptyWorkspace } from "../core/defaultWorkspace";
 import { deleteAudioFile } from "../transcription/audioStore";
+import { knowledgeBaseStats } from "../knowledge";
 
 const themeLabels: Record<WorkspacePreferences["theme"], string> = { system: "跟随系统", light: "浅色", dark: "深色" };
 type ConnectionState = { status: "idle" | "testing" | "success" | "error"; message: string };
@@ -164,10 +165,11 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
           <SettingToggle icon={Database} title="自动保存" description="输入和修改自动写入当前设备" checked={preferences.autoSave} onChange={(autoSave) => controller.updatePreferences({ autoSave })} />
           <SettingRow icon={Moon} title="外观" value={themeLabels[preferences.theme]} onClick={cycleTheme} />
           <SettingRow icon={KeyRound} title="设备凭证" value="API Key 不参与同步" />
+          <SettingRow icon={Database} title="内置知识库" value={`${knowledgeBaseStats.executableRuleCount} 条可执行规则 · ${knowledgeBaseStats.lexicalPatternCount} 个短语模式`} />
           <SettingRow icon={Trash2} title="清理本地数据" value="删除会话、录音、报告和计划" onClick={() => void clearLocalData()} />
         </section>
       </div>
-      <footer className="settings-footer"><strong>言序 0.2.5</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
+      <footer className="settings-footer"><strong>言序 0.2.6</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
     </div>
   );
 }
