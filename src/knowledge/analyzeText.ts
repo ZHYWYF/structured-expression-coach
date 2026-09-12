@@ -215,6 +215,17 @@ export const localKnowledgeBase: LocalKnowledgeBase = {
   runtime: { ...baseKnowledgeBase.runtime, executableRuleCount: knowledgeBaseStats.executableRuleCount },
 };
 
+function hasConcreteProgressEvidence(text: string, start: number): boolean {
+  // Only use the current sentence: evidence for another item must not hide a vague status.
+  const before = text.slice(Math.max(0, start - 240), start).split(/[。！？!?；;\n]/).pop() ?? "";
+  const after = text.slice(start, start + 240).split(/[。！？!?；;\n]/)[0];
+  const context = before + after;
+  const completedScope = /(?:已完成|已交付|已上线|完成了|交付了|上线了)[^，,。；;\n]{2,40}/.test(context);
+  const completionRate = /(?:完成率|完成度|进度)\s*(?:为|达(?:到)?|[:：])?\s*(?:\d+(?:\.\d+)?\s*[%％]|百分之[零一二三四五六七八九十百点\d]+)/.test(context);
+  const deviation = /(?:无(?:进度)?偏差|未(?:出现|发现)(?:进度)?偏差|(?:提前|延后|延期|落后|推迟)\s*(?:\d+|[零一二三四五六七八九十]+)\s*(?:天|日|周|月)|(?:进度|计划)偏差(?:为|是|[:：])?\s*[+-]?\d+)/.test(context);
+  return completedScope && completionRate && deviation;
+}
+
 function collectMatches(
   text: string,
   scenario: KnowledgeScenario,
@@ -234,6 +245,10 @@ function collectMatches(
 
       let start = text.indexOf(pattern);
       while (start !== -1) {
+        if (rule.id === "RPT-011" && hasConcreteProgressEvidence(text, start)) {
+          start = text.indexOf(pattern, start + 1);
+          continue;
+        }
         if ((pattern === "额" || pattern === "呃") &&
             ((start > 0 && !/[\s，。！？、；：,.!?;:]/.test(text[start - 1])) ||
              (start + pattern.length < text.length && !/[\s，。！？、；：,.!?;:]/.test(text[start + pattern.length])))) {
