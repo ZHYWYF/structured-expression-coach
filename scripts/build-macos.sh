@@ -24,14 +24,36 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 pnpm exec tauri build \
   --ci \
   --target universal-apple-darwin \
-  --bundles app,dmg
+  --bundles app
 
 bundle_root="$project_root/src-tauri/target/universal-apple-darwin/release/bundle"
 app_path="$bundle_root/macos/言序.app"
+dmg_dir="$bundle_root/dmg"
+app_version="$(node -p "require('./package.json').version")"
+dmg_path="$dmg_dir/言序_${app_version}_universal.dmg"
 
 codesign --verify --deep --strict --verbose=2 "$app_path"
 codesign --display --verbose=4 "$app_path"
 lipo -archs "$app_path/Contents/MacOS/structured-expression-coach"
+
+# Tauri 的 bundle_dmg.sh 在 GitHub macOS runner 上存在偶发失败。
+# 应用本体完成签名校验后，直接使用 macOS 原生 hdiutil 生成标准安装盘。
+dmg_staging_dir="$(mktemp -d)"
+cleanup() {
+  rm -rf "$dmg_staging_dir"
+}
+trap cleanup EXIT
+
+cp -R "$app_path" "$dmg_staging_dir/言序.app"
+ln -s /Applications "$dmg_staging_dir/Applications"
+mkdir -p "$dmg_dir"
+hdiutil create \
+  -volname "言序" \
+  -srcfolder "$dmg_staging_dir" \
+  -ov \
+  -format UDZO \
+  "$dmg_path"
+hdiutil verify "$dmg_path"
 
 echo "macOS 安装包已生成："
 find "$bundle_root" -type f \( -name '*.dmg' -o -name '*.app.tar.gz' \) -print
