@@ -103,9 +103,15 @@ describe("analyzeText", () => {
     expect(localKnowledgeBase.advisoryRuleCatalog.structural).toHaveLength(18);
     expect(localKnowledgeBase.advisoryRuleCatalog.semantic).toHaveLength(30);
     expect(localKnowledgeBase.runtime.mode).toBe("hybrid_local");
-    expect(localKnowledgeBase.runtime.executableRuleCount).toBe(24);
+    expect(localKnowledgeBase.runtime.executableRuleCount).toBe(40);
     expect(localKnowledgeBase.runtime.disabledPendingDictionaryCandidates).toBe(
       321,
     );
+  });
+
+  it("runs generated scenario-specific knowledge rules", () => {
+    expect(analyzeText("我们完成了项目，学到了很多。", "interview").map((item) => item.ruleId)).toEqual(expect.arrayContaining(["INT-021", "INT-023"]));
+    expect(analyzeText("项目进展顺利，目前没有风险。", "report").map((item) => item.ruleId)).toEqual(expect.arrayContaining(["RPT-011", "RPT-013"]));
+    expect(analyzeText("主要原因是沟通不到位，下次注意。", "retrospective").map((item) => item.ruleId)).toEqual(expect.arrayContaining(["RET-011", "RET-012"]));
   });
 });

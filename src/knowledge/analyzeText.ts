@@ -1,4 +1,5 @@
 import knowledgeBaseJson from "./data/local-knowledge.json";
+import generatedKnowledgeJson from "./data/generated-v1.json";
 
 import type {
   AnalysisFinding,
@@ -196,6 +197,7 @@ function collectHeuristicMatches(text: string, scenario: KnowledgeScenario): Mat
 }
 
 export const localKnowledgeBase = knowledgeBaseJson as LocalKnowledgeBase;
+const generatedLexicalRules = (generatedKnowledgeJson as { lexicalRules: LexicalKnowledgeRule[] }).lexicalRules;
 
 function collectMatches(
   text: string,
@@ -291,7 +293,7 @@ export function analyzeText(
 
   return resolveOverlaps(
     [
-      ...collectMatches(text, scenario, localKnowledgeBase.lexicalRules),
+      ...collectMatches(text, scenario, [...localKnowledgeBase.lexicalRules, ...generatedLexicalRules]),
       ...collectHeuristicMatches(text, scenario),
     ],
   );

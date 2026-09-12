@@ -159,6 +159,7 @@ export interface RecordingTask {
   transcript?: string;
   transcriptSegments?: Array<{ id: Id; startMs: number; endMs: number; text: string; speakerLabel?: string }>;
   provider?: "local" | "online";
+  analysisScenario?: RecordingAnalysisScenario;
   sourceFileName?: string;
   sourceMimeType?: string;
   remoteAudioId?: string;
@@ -167,6 +168,8 @@ export interface RecordingTask {
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
+
+export type RecordingAnalysisScenario = "general" | "interview" | "report" | "retrospective";
 
 export interface SessionBase {
   id: Id;

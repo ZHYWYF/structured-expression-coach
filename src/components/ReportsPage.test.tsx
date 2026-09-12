@@ -6,11 +6,11 @@ import { createController } from "../test/createController";
 
 const mocks = vi.hoisted(() => ({
   loadAudioFile: vi.fn(), saveAudioFile: vi.fn(), deleteAudioFile: vi.fn(),
-  decodeAudioTo16Khz: vi.fn(), transcribe: vi.fn(),
+  decodeAudioTo16Khz: vi.fn(), transcribe: vi.fn(), requestChatCompletion: vi.fn(),
 }));
 vi.mock("../transcription/audioStore", () => ({ loadAudioFile: mocks.loadAudioFile, saveAudioFile: mocks.saveAudioFile, deleteAudioFile: mocks.deleteAudioFile }));
 vi.mock("../transcription/localRuntime", () => ({ decodeAudioTo16Khz: mocks.decodeAudioTo16Khz, localTranscriptionRuntime: { transcribe: mocks.transcribe } }));
-vi.mock("../providers/openAiCompatible", () => ({ requestChatCompletion: vi.fn(), transcribeWithOnlineProvider: vi.fn() }));
+vi.mock("../providers/openAiCompatible", () => ({ requestChatCompletion: mocks.requestChatCompletion, transcribeWithOnlineProvider: vi.fn() }));
 
 import { ReportsPage } from "./ReportsPage";
 
@@ -48,5 +48,27 @@ describe("ReportsPage", () => {
 
     expect(controller.upsertRecordingTask).not.toHaveBeenCalled();
     expect(controller.updateSession).not.toHaveBeenCalled();
+  });
+
+  it("uses the selected scenario prompt when generating a report", async () => {
+    const completedTask: RecordingTask = { ...task, status: "completed", transcript: "项目延期，主要原因是沟通不到位。", analysisScenario: "retrospective" };
+    mocks.requestChatCompletion.mockResolvedValue(JSON.stringify({
+      title: "项目复盘报告", overallScore: 72,
+      dimensions: [
+        { key: "structure", label: "结构", score: 70, summary: "需补齐复盘结构" },
+        { key: "clarity", label: "清晰度", score: 72, summary: "原因较抽象" },
+        { key: "evidence", label: "证据", score: 65, summary: "缺少证据" },
+        { key: "brevity", label: "简洁度", score: 80, summary: "较简洁" },
+        { key: "confidence", label: "自信度", score: 75, summary: "表达稳定" },
+      ],
+      strengths: ["问题明确"], improvements: ["补充根因证据"], actionItems: ["定义验证标准"],
+    }));
+    const controller = createController({ sessions: [session], selectedSessionId: session.id, selectedSession: session, recordingTasks: [completedTask] });
+    render(<ReportsPage controller={controller} />);
+
+    fireEvent.click(screen.getByText("生成报告"));
+    await waitFor(() => expect(mocks.requestChatCompletion).toHaveBeenCalled());
+    const messages = mocks.requestChatCompletion.mock.calls[0][1] as Array<{ content: string }>;
+    expect(messages.map((item) => item.content).join("\n")).toContain("根因证据");
   });
 });
