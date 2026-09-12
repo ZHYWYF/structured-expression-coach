@@ -9,6 +9,19 @@ import { localTranscriptionRuntime } from "../transcription/localRuntime";
 
 type AnalysisMode = "汇报" | "复盘";
 type FindingTone = "filler" | "vague" | "structure";
+type MicrophoneSession = {
+  stream: MediaStream;
+  context: AudioContext;
+  processor: ScriptProcessorNode;
+  source: MediaStreamAudioSourceNode;
+  chunks: Float32Array[];
+  sampleRate: number;
+  busy: boolean;
+  stopping: boolean;
+  processing: Promise<void> | null;
+};
+
+const LIVE_TRANSCRIPTION_WINDOW_SECONDS = 1.5;
 
 function formatSessionTime(value: string): string {
   const date = new Date(value);
@@ -35,11 +48,12 @@ function findingTone(finding: AnalysisFinding): FindingTone {
 
 function HighlightedText({ text, findings }: { text: string; findings: AnalysisFinding[] }) {
   if (!text) return <span className="placeholder-copy">输入后，这里会同步展示局部标注。</span>;
-  if (!findings.length) return <>{text}</>;
+  const spanFindings = findings.filter((finding) => finding.scope !== "document" && finding.range.end > finding.range.start);
+  if (!spanFindings.length) return <>{text}</>;
 
   const nodes: ReactNode[] = [];
   let cursor = 0;
-  for (const finding of findings) {
+  for (const finding of spanFindings) {
     if (finding.range.start > cursor) nodes.push(text.slice(cursor, finding.range.start));
     nodes.push(
       <mark className={`annotation-mark ${findingTone(finding)}`} key={`${finding.ruleId}-${finding.range.start}`}>
@@ -58,7 +72,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState("");
-  const microphoneRef = useRef<{ stream: MediaStream; context: AudioContext; processor: ScriptProcessorNode; source: MediaStreamAudioSourceNode; chunks: Float32Array[]; sampleRate: number; busy: boolean } | null>(null);
+  const microphoneRef = useRef<MicrophoneSession | null>(null);
   useEffect(() => () => {
     const microphone = microphoneRef.current;
     if (!microphone) return;
@@ -142,47 +156,72 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
     controller.updateSessionText(`${text.slice(0, finding.range.start)}${replacement}${text.slice(finding.range.end)}`, selectedSession.id);
   };
 
-  const processVoiceChunks = async (force = false) => {
+  const processVoiceChunks = async (force = false): Promise<void> => {
     const microphone = microphoneRef.current;
-    if (!microphone || microphone.busy || (!force && microphone.chunks.reduce((sum, item) => sum + item.length, 0) < microphone.sampleRate * 6)) return;
-    const sourceLength = microphone.chunks.reduce((sum, item) => sum + item.length, 0);
-    const source = new Float32Array(sourceLength); let offset = 0;
-    for (const chunk of microphone.chunks) { source.set(chunk, offset); offset += chunk.length; }
-    microphone.chunks = []; microphone.busy = true;
-    const targetLength = Math.max(1, Math.round(source.length * 16_000 / microphone.sampleRate));
-    const samples = new Float32Array(targetLength);
-    for (let index = 0; index < targetLength; index += 1) {
-      const position = index * microphone.sampleRate / 16_000;
-      const before = Math.floor(position); const after = Math.min(source.length - 1, before + 1); const ratio = position - before;
-      samples[index] = source[before] * (1 - ratio) + source[after] * ratio;
-    }
+    if (!microphone) return;
+    if (microphone.processing) return microphone.processing;
+    const threshold = microphone.sampleRate * LIVE_TRANSCRIPTION_WINDOW_SECONDS;
+    if (!force && microphone.chunks.reduce((sum, item) => sum + item.length, 0) < threshold) return;
     const model = controller.preferences.installedModels.find((item) => item.status === "ready");
-    try {
-      if (!model) throw new Error("请先在设置中下载本地转写模型");
-      setVoiceStatus("正在识别刚才的语音…");
-      const result = await localTranscriptionRuntime.transcribe(model.id, samples);
-      if (result.text && selectedSession) controller.updateSessionText(`${controller.sessions.find((item) => item.id === selectedSession.id)?.draftText ?? ""}${result.text}`, selectedSession.id);
-      setVoiceStatus("正在聆听");
-    } catch (error) { setVoiceStatus(error instanceof Error ? error.message : "语音识别失败"); }
-    finally { if (microphoneRef.current) microphoneRef.current.busy = false; }
+    const sessionId = selectedSession?.id;
+    microphone.processing = (async () => {
+      microphone.busy = true;
+      try {
+        if (!model) throw new Error("请先在设置中下载本地转写模型");
+        do {
+          const sourceLength = microphone.chunks.reduce((sum, item) => sum + item.length, 0);
+          if (!sourceLength || (!force && sourceLength < threshold)) break;
+          const source = new Float32Array(sourceLength); let offset = 0;
+          for (const chunk of microphone.chunks) { source.set(chunk, offset); offset += chunk.length; }
+          microphone.chunks = [];
+          const targetLength = Math.max(1, Math.round(source.length * 16_000 / microphone.sampleRate));
+          const samples = new Float32Array(targetLength);
+          for (let index = 0; index < targetLength; index += 1) {
+            const position = index * microphone.sampleRate / 16_000;
+            const before = Math.floor(position); const after = Math.min(source.length - 1, before + 1); const ratio = position - before;
+            samples[index] = source[before] * (1 - ratio) + source[after] * ratio;
+          }
+          setVoiceStatus("正在识别，同时继续聆听…");
+          const result = await localTranscriptionRuntime.transcribe(model.id, samples);
+          if (result.text && sessionId) {
+            controller.updateSession(sessionId, (session) => ({ ...session, draftText: `${session.draftText}${result.text.trim()}` }));
+          }
+          force = microphone.stopping;
+        } while (microphone.chunks.reduce((sum, item) => sum + item.length, 0) >= (force ? 1 : threshold));
+        setVoiceStatus(microphone.stopping ? "正在完成最后一段识别…" : "正在聆听");
+      } catch (error) {
+        setVoiceStatus(error instanceof Error ? error.message : "语音识别失败");
+      } finally {
+        microphone.busy = false;
+        microphone.processing = null;
+      }
+    })();
+    return microphone.processing;
   };
 
   const toggleMicrophone = async () => {
     if (microphoneRef.current) {
       const current = microphoneRef.current;
+      current.stopping = true;
       current.processor.disconnect(); current.source.disconnect(); current.stream.getTracks().forEach((track) => track.stop());
       setIsListening(false); setVoiceStatus("正在完成最后一段识别…");
-      await processVoiceChunks(true); await current.context.close(); microphoneRef.current = null; setVoiceStatus("语音输入已结束");
+      if (current.processing) await current.processing;
+      await processVoiceChunks(true);
+      await current.context.close(); microphoneRef.current = null; setVoiceStatus("语音输入已结束");
       return;
     }
     if (!selectedSession) return;
     if (!controller.preferences.installedModels.some((item) => item.status === "ready")) { setVoiceStatus("请先在设置中下载本地转写模型"); return; }
     try {
+      const model = controller.preferences.installedModels.find((item) => item.status === "ready");
+      if (!model) return;
+      setVoiceStatus("正在预热本地转写模型…");
+      await localTranscriptionRuntime.install(model.id);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       const context = new AudioContext(); const source = context.createMediaStreamSource(stream); const processor = context.createScriptProcessor(4096, 1, 1);
-      microphoneRef.current = { stream, context, processor, source, chunks: [], sampleRate: context.sampleRate, busy: false };
+      microphoneRef.current = { stream, context, processor, source, chunks: [], sampleRate: context.sampleRate, busy: false, stopping: false, processing: null };
       processor.onaudioprocess = (event) => { const current = microphoneRef.current; if (!current) return; current.chunks.push(event.inputBuffer.getChannelData(0).slice()); void processVoiceChunks(); };
-      source.connect(processor); processor.connect(context.destination); setIsListening(true); setVoiceStatus("正在聆听，每约 6 秒更新一次文字");
+      source.connect(processor); processor.connect(context.destination); setIsListening(true); setVoiceStatus("正在聆听，约 1.5 秒更新一次文字");
     } catch (error) { setVoiceStatus(error instanceof Error ? error.message : "无法访问麦克风"); }
   };
 
@@ -247,12 +286,12 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
             <HighlightedText text={text} findings={findings} />
           </div>
           <div className="annotation-list">
-            {findings.slice(0, 5).map((finding) => {
+            {findings.map((finding) => {
               const tone = findingTone(finding);
               return (
                 <div className="annotation-item" key={`${finding.ruleId}-${finding.range.start}`}>
                   <span className={`annotation-key ${tone}`}>{finding.matchedText}</span>
-                  <div><strong>{finding.issueType}</strong><p>{finding.suggestion}</p><div className="finding-actions"><button type="button" onClick={() => finding.replacements[0] ? acceptFinding(finding) : setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><Check size={12} /> {finding.replacements[0] ? `改为“${finding.replacements[0]}”` : "采纳建议"}</button><button type="button" onClick={() => setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><X size={12} /> 忽略</button></div></div>
+                  <div><strong>{finding.issueType}</strong><p>{finding.reason} {finding.suggestion}</p><div className="finding-actions"><button type="button" onClick={() => finding.replacements[0] ? acceptFinding(finding) : setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><Check size={12} /> {finding.replacements[0] ? `改为“${finding.replacements[0]}”` : "采纳建议"}</button><button type="button" onClick={() => setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><X size={12} /> 忽略</button></div></div>
                 </div>
               );
             })}

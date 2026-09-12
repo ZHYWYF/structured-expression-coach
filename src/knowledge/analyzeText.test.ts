@@ -81,17 +81,31 @@ describe("analyzeText", () => {
     expect(analyzeText("", "general")).toEqual([]);
   });
 
-  it("keeps structural and semantic rules metadata-only", () => {
+  it("adds local structural and evidence findings without an AI request", () => {
+    const text = "这个季度我们推进了多个项目，完成了相关工作。后续继续优化。";
+    const ruleIds = analyzeText(text, "report").map((finding) => finding.ruleId);
+
+    expect(ruleIds).toContain("RPT-001");
+    expect(ruleIds).toContain("GEN-017");
+    expect(ruleIds).toContain("RPT-006");
+  });
+
+  it("detects long sentences and repeated connectors", () => {
+    const text = `我们先完成需求分析然后推进设计然后组织评审然后协调开发和测试，${"并持续处理上线问题".repeat(4)}。`;
+    const ruleIds = analyzeText(text, "retrospective").map((finding) => finding.ruleId);
+
+    expect(ruleIds).toContain("GEN-016");
+    expect(ruleIds).toContain("GEN-015");
+  });
+
+  it("tracks the hybrid local runtime catalog", () => {
     expect(localKnowledgeBase.lexicalRules).toHaveLength(16);
     expect(localKnowledgeBase.advisoryRuleCatalog.structural).toHaveLength(18);
     expect(localKnowledgeBase.advisoryRuleCatalog.semantic).toHaveLength(30);
+    expect(localKnowledgeBase.runtime.mode).toBe("hybrid_local");
+    expect(localKnowledgeBase.runtime.executableRuleCount).toBe(24);
     expect(localKnowledgeBase.runtime.disabledPendingDictionaryCandidates).toBe(
       321,
     );
-    expect(
-      localKnowledgeBase.lexicalRules.some((rule) =>
-        rule.id.startsWith("IMP-"),
-      ),
-    ).toBe(false);
   });
 });

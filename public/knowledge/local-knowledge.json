@@ -4,9 +4,9 @@
   "packVersion": "0.1.0",
   "reviewStatus": "sample_review",
   "runtime": {
-    "mode": "lexical_exact",
-    "executableRuleCount": 16,
-    "metadataOnlyRuleCount": 48,
+    "mode": "hybrid_local",
+    "executableRuleCount": 24,
+    "metadataOnlyRuleCount": 40,
     "disabledPendingDictionaryCandidates": 321
   },
   "lexicalRules": [
@@ -474,7 +474,7 @@
     }
   ],
   "advisoryRuleCatalog": {
-    "description": "结构和语义规则仅供能力目录展示，不参与本地精确匹配。",
+    "description": "结构和语义规则目录；其中可由本地确定性启发式可靠识别的规则已参与即时分析。",
     "structural": [
       {
         "id": "RPT-001",

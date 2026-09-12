@@ -47,7 +47,7 @@ export interface LocalKnowledgeBase {
   packVersion: string;
   reviewStatus: "sample_review";
   runtime: {
-    mode: "lexical_exact";
+    mode: "lexical_exact" | "hybrid_local";
     executableRuleCount: number;
     metadataOnlyRuleCount: number;
     disabledPendingDictionaryCandidates: number;
@@ -76,4 +76,6 @@ export interface AnalysisFinding {
   replacements: string[];
   ruleId: string;
   source: KnowledgeRuleSource;
+  /** Document-level advice is shown in the list without forcing an in-text mark. */
+  scope?: "span" | "document";
 }
