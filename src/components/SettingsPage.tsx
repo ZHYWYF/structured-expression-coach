@@ -14,8 +14,25 @@ type ConnectionState = { status: "idle" | "testing" | "success" | "error"; messa
 
 function ProviderForm({ title, description, kind, value, onChange }: { title: string; description: string; kind: Exclude<SecretKind, "sync">; value: ProviderConfiguration; onChange: (next: ProviderConfiguration) => void }) {
   const [apiKey, setApiKey] = useState("");
+  const [isSecretLoading, setIsSecretLoading] = useState(true);
   const [connection, setConnection] = useState<ConnectionState>({ status: "idle", message: "尚未测试" });
-  useEffect(() => { void readDeviceSecret(kind).then(setApiKey); }, [kind]);
+  useEffect(() => {
+    let cancelled = false;
+    setIsSecretLoading(true);
+    void readDeviceSecret(kind)
+      .then((secret) => {
+        if (!cancelled) setApiKey(secret);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : typeof error === "string" ? error : "读取凭证失败";
+        setConnection({ status: "error", message });
+      })
+      .finally(() => {
+        if (!cancelled) setIsSecretLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [kind]);
   const save = async () => {
     await writeDeviceSecret(kind, apiKey);
     onChange(value);
@@ -39,13 +56,13 @@ function ProviderForm({ title, description, kind, value, onChange }: { title: st
         <label><span>配置名称</span><input value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} /></label>
         <label><span>模型名称</span><input value={value.model} placeholder={kind === "ai" ? "例如：gpt-4.1-mini" : "例如：whisper-1"} onChange={(event) => onChange({ ...value, model: event.target.value })} /></label>
         <label className="full"><span>服务地址</span><input value={value.baseUrl} placeholder="https://api.example.com/v1" onChange={(event) => onChange({ ...value, baseUrl: event.target.value })} /></label>
-        <label className="full"><span>API Key（仅保存在当前设备，不参与同步）</span><input type="password" autoComplete="off" value={apiKey} placeholder="输入 API Key" onChange={(event) => setApiKey(event.target.value)} /></label>
+        <label className="full"><span>API Key（仅保存在当前设备，不参与同步）</span><input type="password" autoComplete="off" value={apiKey} disabled={isSecretLoading} placeholder={isSecretLoading ? "正在读取已保存的 API Key" : "输入 API Key"} onChange={(event) => setApiKey(event.target.value)} /></label>
       </div>
       <div className="settings-actions">
         <label className="inline-check"><input type="checkbox" checked={value.enabled} onChange={(event) => onChange({ ...value, enabled: event.target.checked })} /> 启用此配置</label>
         <span className={`connection-state ${connection.status}`}>{connection.message}</span>
-        <button type="button" className="button-secondary" onClick={() => void test()} disabled={connection.status === "testing"}><RefreshCw size={14} /> 测试连接</button>
-        <button type="button" className="button-primary compact-button" onClick={() => void save()}><Save size={14} /> 保存</button>
+        <button type="button" className="button-secondary" onClick={() => void test()} disabled={isSecretLoading || connection.status === "testing"}><RefreshCw size={14} /> 测试连接</button>
+        <button type="button" className="button-primary compact-button" onClick={() => void save()} disabled={isSecretLoading}><Save size={14} /> 保存</button>
       </div>
     </section>
   );
@@ -150,7 +167,7 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
           <SettingRow icon={Trash2} title="清理本地数据" value="删除会话、录音、报告和计划" onClick={() => void clearLocalData()} />
         </section>
       </div>
-      <footer className="settings-footer"><strong>言序 0.2.2</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
+      <footer className="settings-footer"><strong>言序 0.2.3</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
     </div>
   );
 }
