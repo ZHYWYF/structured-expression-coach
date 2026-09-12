@@ -21,6 +21,15 @@ const timeSignals = /(?:今天|明天|本周|下周|本月|月底|季度|\d{1,2}
 const ownerSignals = /(?:我|我们|负责人|产品|研发|设计|运营|销售|团队|同学|部门)/;
 const verificationSignals = /(?:验收|验证|复测|检查|监控|指标|标准|完成率|通过率)/;
 
+function collectActionContexts(text: string) {
+  return [...text.matchAll(/[^。！？!?；;\n]+/g)].flatMap((sentence) => {
+    const signal = [...sentence[0].matchAll(new RegExp(actionSignals.source, "g"))].find((match) =>
+      match[0] !== "计划" || !/(?:按|按照|原定|既定|既有)$/.test(sentence[0].slice(0, match.index)),
+    );
+    return signal ? [{ text: sentence[0], start: sentence.index + signal.index }] : [];
+  });
+}
+
 function documentFinding(
   text: string,
   ruleId: string,
@@ -76,7 +85,7 @@ function collectHeuristicMatches(text: string, scenario: KnowledgeScenario): Mat
   if (trimmed.length < 12) return findings;
 
   const sentences = trimmed.split(/[。！？!?；;\n]+/).map((item) => item.trim()).filter(Boolean);
-  const actionSentence = sentences.find((sentence) => actionSignals.test(sentence)) ?? "";
+  const actionContexts = collectActionContexts(text);
   const longSentence = sentences.find((sentence) => sentence.length >= 55);
   if (longSentence) {
     const start = text.indexOf(longSentence);
@@ -152,9 +161,10 @@ function collectHeuristicMatches(text: string, scenario: KnowledgeScenario): Mat
         "产品规则/汇报结论",
       ));
     }
-    if (actionSentence && (!timeSignals.test(actionSentence) || !ownerSignals.test(actionSentence))) {
+    const incompleteAction = actionContexts.find((action) => !timeSignals.test(action.text) || !ownerSignals.test(action.text));
+    if (incompleteAction) {
       const action = spanFinding(
-        text,
+        text.slice(incompleteAction.start),
         actionSignals,
         "RPT-006",
         "下一步缺少负责人或时间",
@@ -163,7 +173,7 @@ function collectHeuristicMatches(text: string, scenario: KnowledgeScenario): Mat
         96,
         "产品规则/行动闭环",
       );
-      if (action) findings.push(action);
+      if (action) findings.push({ ...action, range: { start: action.range.start + incompleteAction.start, end: action.range.end + incompleteAction.start } });
     }
   }
 
@@ -179,9 +189,10 @@ function collectHeuristicMatches(text: string, scenario: KnowledgeScenario): Mat
         "产品规则/根因分析",
       ));
     }
-    if (actionSentence && !verificationSignals.test(actionSentence)) {
+    const unverifiedAction = actionContexts.find((action) => !verificationSignals.test(action.text));
+    if (unverifiedAction) {
       const action = spanFinding(
-        text,
+        text.slice(unverifiedAction.start),
         actionSignals,
         "RET-007",
         "行动缺少验证方式",
@@ -190,7 +201,7 @@ function collectHeuristicMatches(text: string, scenario: KnowledgeScenario): Mat
         95,
         "产品规则/行动验证",
       );
-      if (action) findings.push(action);
+      if (action) findings.push({ ...action, range: { start: action.range.start + unverifiedAction.start, end: action.range.end + unverifiedAction.start } });
     }
   }
 

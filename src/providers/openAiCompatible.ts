@@ -1,4 +1,4 @@
-import type { ProviderConfiguration } from "../core/types";
+import type { ProviderConfiguration, RecordingTask } from "../core/types";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { appFetch } from "./http";
 
@@ -112,9 +112,15 @@ export async function requestChatCompletion(
   return content;
 }
 
+export interface OnlineTranscriptionMetadata {
+  durationSeconds?: number;
+  transcriptSegments: NonNullable<RecordingTask["transcriptSegments"]>;
+}
+
 export async function transcribeWithOnlineProvider(
   configuration: ProviderConfiguration,
   file: File,
+  onMetadata?: (metadata: OnlineTranscriptionMetadata) => void,
 ): Promise<string> {
   const apiKey = await readDeviceSecret("online-asr");
   if (!configuration.enabled || !configuration.model.trim() || !apiKey) {
@@ -131,7 +137,19 @@ export async function transcribeWithOnlineProvider(
     body: form,
   });
   if (!response.ok) throw new Error(await responseError(response, apiKey));
-  const body = await response.json() as { text?: string };
+  const body = await response.json() as { text?: string; duration?: unknown; segments?: unknown };
   if (typeof body.text !== "string" || !body.text.trim()) throw new Error("在线转写服务没有返回有效文本");
+  const durationSeconds = typeof body.duration === "number" && Number.isFinite(body.duration) && body.duration > 0 ? body.duration : undefined;
+  const transcriptSegments = (Array.isArray(body.segments) ? body.segments : []).flatMap((raw: unknown) => {
+    if (!raw || typeof raw !== "object") return [];
+    const segment = raw as Record<string, unknown>;
+    if (typeof segment.text !== "string" || !segment.text.trim() ||
+        typeof segment.start !== "number" || !Number.isFinite(segment.start) || segment.start < 0 ||
+        typeof segment.end !== "number" || !Number.isFinite(segment.end) || segment.end <= segment.start ||
+        (durationSeconds !== undefined && segment.start >= durationSeconds)) return [];
+    return [{ id: `segment-${crypto.randomUUID()}`, startMs: Math.round(segment.start * 1000),
+      endMs: Math.round(Math.min(segment.end, durationSeconds ?? segment.end) * 1000), text: segment.text.trim() }];
+  }).sort((left, right) => left.startMs - right.startMs);
+  onMetadata?.({ durationSeconds, transcriptSegments });
   return body.text.trim();
 }
