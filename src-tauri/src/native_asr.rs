@@ -422,7 +422,7 @@ fn transcribe_native(
     params.set_print_timestamps(false);
     let progress_app = app.clone();
     let progress_task = task_id.to_string();
-    params.set_progress_callback_safe(Some(move |progress| {
+    params.set_progress_callback_safe(Some(move |progress: i32| {
         emit_progress(
             &progress_app,
             &progress_task,
@@ -443,25 +443,22 @@ fn transcribe_native(
         return Err("已停止本次转写，原始录音已保留。".to_string());
     }
     emit_progress(app, task_id, 99, "识别完成，正在整理时间戳和逐字稿…");
-    let count = state.full_n_segments().map_err(|error| error.to_string())?;
+    let count = state.full_n_segments();
     let mut chunks = Vec::with_capacity(count as usize);
     for index in 0..count {
-        let text = state
-            .full_get_segment_text_lossy(index)
+        let segment = state
+            .get_segment(index)
+            .ok_or_else(|| "无法读取识别分段".to_string())?;
+        let text = segment
+            .to_str_lossy()
             .map_err(|error| error.to_string())?
             .trim()
             .to_string();
         if text.is_empty() {
             continue;
         }
-        let start = state
-            .full_get_segment_t0(index)
-            .map_err(|error| error.to_string())? as f64
-            / 100.0;
-        let end = state
-            .full_get_segment_t1(index)
-            .map_err(|error| error.to_string())? as f64
-            / 100.0;
+        let start = segment.start_timestamp() as f64 / 100.0;
+        let end = segment.end_timestamp() as f64 / 100.0;
         chunks.push(NativeAsrSegment {
             text,
             timestamp: [start, end],
