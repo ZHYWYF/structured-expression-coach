@@ -5,7 +5,7 @@ import type { WorkspaceController } from "../core/useWorkspace";
 import type { ProviderConfiguration, WorkspacePreferences } from "../core/types";
 import { readDeviceSecret, testProviderConnection, writeDeviceSecret, type SecretKind } from "../providers/openAiCompatible";
 import { PageHeader } from "./ui";
-import { deleteCachedModel, localModelCatalog, localTranscriptionRuntime } from "../transcription/localRuntime";
+import { deleteCachedModel, isLocalModelInstalled, localModelCatalog, localTranscriptionRuntime } from "../transcription/localRuntime";
 import { mergeWorkspace, syncWorkspace, testSyncConnection } from "../sync/webdavSync";
 import { createEmptyWorkspace } from "../core/defaultWorkspace";
 import { deleteAudioFile } from "../transcription/audioStore";
@@ -95,6 +95,20 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
   const [syncSecretReady, setSyncSecretReady] = useState(false);
   useEffect(() => { let cancelled = false; void readDeviceSecret("sync").then((value) => { if (!cancelled) { setSyncPassword(value); setSyncSecretReady(true); } }).catch(() => { if (!cancelled) setSyncMessage("同步凭证读取失败，已保留原密码，请重新打开设置。"); }); return () => { cancelled = true; }; }, []);
   useEffect(() => { modelsRef.current = preferences.installedModels; }, [preferences.installedModels]);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all(preferences.installedModels.filter((model) => model.status === "ready").map(async (model) => ({ model, installed: await isLocalModelInstalled(model.id) })))
+      .then((checks) => {
+        if (cancelled) return;
+        const missing = new Set(checks.filter((item) => item.installed === false).map((item) => item.model.id));
+        if (!missing.size) return;
+        modelsRef.current = modelsRef.current.map((model) => missing.has(model.id) ? { ...model, status: "paused" as const, progress: 0, errorMessage: "需要续装 Mac 原生 Metal 模型，旧版浏览器模型缓存不会被重复使用。" } : model);
+        controllerRef.current.updatePreferences({ installedModels: modelsRef.current });
+        setModelMessage("检测到旧版模型记录，请点击“继续”安装 Mac 原生 Metal 模型。旧缓存不会影响录音和会话。 ");
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
   const cycleTheme = () => {
     const next: WorkspacePreferences["theme"] = preferences.theme === "system" ? "light" : preferences.theme === "light" ? "dark" : "system";
     controller.updatePreferences({ theme: next });

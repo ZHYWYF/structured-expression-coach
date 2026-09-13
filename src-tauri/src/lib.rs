@@ -39,13 +39,22 @@ fn set_device_secret(kind: String, value: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(native_asr::NativeAsrState::default())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![
             health_check,
             get_device_secret,
-            set_device_secret
+            set_device_secret,
+            native_asr::native_asr_capabilities,
+            native_asr::native_asr_model_status,
+            native_asr::native_asr_install_model,
+            native_asr::native_asr_delete_model,
+            native_asr::native_asr_stage_audio,
+            native_asr::native_asr_transcribe,
+            native_asr::native_asr_cancel
         ])
         .run(tauri::generate_context!())
         .expect("failed to run application");
 }
+mod native_asr;

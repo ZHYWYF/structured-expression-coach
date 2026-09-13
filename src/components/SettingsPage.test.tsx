@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createController } from "../test/createController";
 
-const runtimeMocks = vi.hoisted(() => ({ install: vi.fn(), cancelAll: vi.fn(), deleteCachedModel: vi.fn() }));
+const runtimeMocks = vi.hoisted(() => ({ install: vi.fn(), cancelAll: vi.fn(), deleteCachedModel: vi.fn(), isLocalModelInstalled: vi.fn(async () => null) }));
 const secretMocks = vi.hoisted(() => ({ values: new Map<string, string>() }));
 vi.mock("../transcription/localRuntime", () => ({
   localModelCatalog: [
@@ -12,6 +12,7 @@ vi.mock("../transcription/localRuntime", () => ({
   ],
   localTranscriptionRuntime: { install: runtimeMocks.install, cancelAll: runtimeMocks.cancelAll },
   deleteCachedModel: runtimeMocks.deleteCachedModel,
+  isLocalModelInstalled: runtimeMocks.isLocalModelInstalled,
 }));
 vi.mock("../providers/openAiCompatible", () => ({
   readDeviceSecret: vi.fn(async (kind: string) => secretMocks.values.get(kind) ?? ""),

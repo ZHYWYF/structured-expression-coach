@@ -42,6 +42,13 @@ jobs:
           GOMAXPROCS: "1"
         run: bash scripts/build-macos.sh
 
+      - name: Verify native Metal transcription engine
+        run: |
+          app="src-tauri/target/universal-apple-darwin/release/bundle/macos/言序.app"
+          binary="$app/Contents/MacOS/structured-expression-coach"
+          otool -L "$binary"
+          strings "$binary" | grep -q "whisper.cpp + Metal"
+
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:

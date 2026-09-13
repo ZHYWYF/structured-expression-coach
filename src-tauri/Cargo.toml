@@ -1,6 +1,6 @@
 [package]
 name = "structured-expression-coach"
-version = "0.2.13"
+version = "0.2.14"
 description = "本地优先的结构化表达训练应用"
 authors = ["言序"]
 edition = "2021"
@@ -19,3 +19,9 @@ tauri = { version = "2", features = [] }
 tauri-plugin-sql = { version = "2.4.1", features = ["sqlite"] }
 tauri-plugin-http = "2.5"
 keyring = { version = "3.6", features = ["apple-native"] }
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+tokio = { version = "1", features = ["fs", "io-util", "sync"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16.0", features = ["metal"] }

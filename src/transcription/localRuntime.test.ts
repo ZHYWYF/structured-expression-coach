@@ -2,6 +2,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { localTranscriptionRuntime } from "./localRuntime";
 
+const tauriMocks = vi.hoisted(() => ({
+  isTauri: vi.fn(() => false),
+  invoke: vi.fn(),
+  listen: vi.fn(),
+}));
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: tauriMocks.isTauri, invoke: tauriMocks.invoke }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: tauriMocks.listen }));
+
 class FakeWorker {
   static instances: FakeWorker[] = [];
   onmessage?: (event: { data: object }) => void;
@@ -14,7 +22,14 @@ class FakeWorker {
 }
 
 describe("本地转写任务生命周期", () => {
-  beforeEach(() => { vi.useFakeTimers(); FakeWorker.instances = []; vi.stubGlobal("Worker", FakeWorker); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    FakeWorker.instances = [];
+    vi.stubGlobal("Worker", FakeWorker);
+    tauriMocks.isTauri.mockReturnValue(false);
+    tauriMocks.invoke.mockReset();
+    tauriMocks.listen.mockReset();
+  });
   afterEach(() => { localTranscriptionRuntime.cancelAll(); vi.useRealTimers(); vi.unstubAllGlobals(); });
   it("报告真实进度并成功释放运行锁", async () => {
     const progress = vi.fn();
@@ -61,5 +76,28 @@ describe("本地转写任务生命周期", () => {
     localTranscriptionRuntime.cancelAll("用户停止");
     expect((await request as Error).message).toBe("用户停止");
     expect(vi.getTimerCount()).toBe(0);
+  });
+  it("Mac 桌面端通过二进制 IPC 使用原生 Metal 转写", async () => {
+    tauriMocks.isTauri.mockReturnValue(true);
+    let progressListener: ((event: { payload: { taskId: string; progress: number; message: string } }) => void) | undefined;
+    tauriMocks.listen.mockImplementation(async (_event, listener) => { progressListener = listener; return vi.fn(); });
+    tauriMocks.invoke.mockImplementation(async (command: string, payload?: unknown, options?: { headers?: Record<string, string> }) => {
+      if (command === "native_asr_capabilities") return { available: true, backend: "whisper.cpp + Metal" };
+      if (command === "native_asr_stage_audio") {
+        expect(payload).toBeInstanceOf(Uint8Array);
+        const taskId = options?.headers?.["x-task-id"] ?? "";
+        progressListener?.({ payload: { taskId, progress: 48, message: "Metal 正在转写" } });
+        return undefined;
+      }
+      if (command === "native_asr_transcribe") {
+        return { text: "原生结果", chunks: [{ text: "原生结果", timestamp: [0, 1] }] };
+      }
+      return undefined;
+    });
+    const progress = vi.fn();
+    const result = await localTranscriptionRuntime.transcribe("model", new Float32Array([0.25]), progress);
+    expect(result.text).toBe("原生结果");
+    expect(progress).toHaveBeenCalledWith(48, "Metal 正在转写");
+    expect(FakeWorker.instances).toHaveLength(0);
   });
 });
