@@ -3,6 +3,12 @@ import type { Report } from "../core/types";
 import { readReportEvidence } from "../providers/recordingReport";
 import { reportHasUsableScore } from "../core/reportScore";
 
+function readableRawContent(content: string): string {
+  const trimmed = content.trim();
+  try { return JSON.stringify(JSON.parse(trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")), null, 2); }
+  catch { return trimmed; }
+}
+
 export function RecordingReportReview({ report }: { report: Report }) {
   if (report.rawContent?.trim()) {
     return <div className="generated-report raw-ai-report">
@@ -10,7 +16,7 @@ export function RecordingReportReview({ report }: { report: Report }) {
         <h3>{report.title || "AI 原始分析"}</h3>
         <p className="report-limit-note">以下为 AI 返回的原始内容，未因格式、引用或字段缺失而拦截。</p>
         <section aria-label="AI 原始分析" className="report-review-section">
-          <p className="report-preserve-lines">{report.rawContent}</p>
+          <pre className="raw-ai-content">{readableRawContent(report.rawContent)}</pre>
         </section>
       </div>
     </div>;

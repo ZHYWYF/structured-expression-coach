@@ -54,6 +54,55 @@ function replaceEvidenceQuote(entry: string, quote: string, alignedQuote: string
   return entry.replace(`原文：${quote}`, `原文：${alignedQuote}`);
 }
 
+function readableValue(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (!value || typeof value !== "object") return "";
+  const object = value as Record<string, unknown>;
+  const labels: Record<string, string> = {
+    quote: "原文", strength: "亮点", problem: "问题", suggestion: "建议", reason: "原因",
+    goal: "首要目标", method: "练习方法", criteria: "完成标准",
+  };
+  const lines = Object.entries(object).flatMap(([key, item]) => {
+    const text = readableValue(item);
+    return text ? [`${labels[key] ?? key}：${text}`] : [];
+  });
+  return lines.join("\n");
+}
+
+function readableList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(readableValue).filter(Boolean);
+}
+
+function parseLooseRecordingReport(raw: unknown, rawContent: string): ReportContent | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const data = raw as Record<string, unknown>;
+  const allowedKeys = new Set<ScoreDimension["key"]>(["structure", "clarity", "evidence", "brevity", "confidence"]);
+  const dimensions = (Array.isArray(data.dimensions) ? data.dimensions : []).flatMap((value): ScoreDimension[] => {
+    if (!value || typeof value !== "object") return [];
+    const item = value as Record<string, unknown>;
+    if (!allowedKeys.has(item.key as ScoreDimension["key"])) return [];
+    const score = typeof item.score === "number" && Number.isFinite(item.score) ? Math.max(0, Math.min(100, item.score)) : 0;
+    return [{ key: item.key as ScoreDimension["key"], label: readableValue(item.label) || String(item.key), score,
+      summary: readableValue(item.summary) || "AI 未提供该维度的详细说明。" }];
+  });
+  const strengths = readableList(data.strengths);
+  const improvements = readableList(data.improvements);
+  const actionItems = readableList(data.actionItems);
+  const recognizable = typeof data.title === "string" || typeof data.overallScore === "number" || dimensions.length || strengths.length || improvements.length || actionItems.length;
+  if (!recognizable) return null;
+  return {
+    title: readableValue(data.title) || "AI 分析报告",
+    overallScore: typeof data.overallScore === "number" && Number.isFinite(data.overallScore) ? Math.max(0, Math.min(100, data.overallScore)) : 0,
+    dimensions,
+    strengths,
+    improvements,
+    actionItems,
+    rawContent: dimensions.length || strengths.length || improvements.length || actionItems.length ? undefined : rawContent,
+  };
+}
+
 function parseStructuredRecordingReport(content: string, transcript: string): ReportContent {
   let raw: unknown;
   try { raw = JSON.parse(content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
@@ -99,6 +148,11 @@ export function parseRecordingReport(content: string, transcript: string): Repor
   try {
     return parseStructuredRecordingReport(rawContent, transcript);
   } catch {
-    return { title: "AI 原始分析", overallScore: 0, dimensions: [], strengths: [], improvements: [], actionItems: [], rawContent };
+    try {
+      const parsed = JSON.parse(rawContent.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+      return parseLooseRecordingReport(parsed, rawContent) ?? { title: "AI 原始分析", overallScore: 0, dimensions: [], strengths: [], improvements: [], actionItems: [], rawContent };
+    } catch {
+      return { title: "AI 原始分析", overallScore: 0, dimensions: [], strengths: [], improvements: [], actionItems: [], rawContent };
+    }
   }
 }

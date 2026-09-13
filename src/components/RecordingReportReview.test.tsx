@@ -22,6 +22,14 @@ describe("RecordingReportReview", () => {
     expect(screen.getByText(/未因格式、引用或字段缺失而拦截/)).toBeTruthy();
     expect(screen.queryByText("训练参考分")).toBeNull();
   });
+
+  it("JSON 原始内容使用全宽预格式化视图", () => {
+    const { container } = render(<RecordingReportReview report={report({ title: "AI 原始分析", rawContent: '{"title":"报告","items":["第一项","第二项"]}', dimensions: [], strengths: [], improvements: [], actionItems: [], overallScore: 0 })} />);
+    const root = container.querySelector(".raw-ai-report");
+    expect(root).toBeTruthy();
+    expect(root?.querySelector(".report-score-large")).toBeNull();
+    expect(root?.querySelector("pre")?.textContent).toContain('\n  "items": [');
+  });
   it("分别展示原句、有据亮点、改法、原因及一个未采纳的练习目标", () => {
     const input = report(); const before = structuredClone(input);
     render(<RecordingReportReview report={input} />);

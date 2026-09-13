@@ -268,15 +268,15 @@ describe("ReportsPage", () => {
     expect((await harness.repository.loadWorkspace())?.sessions[0].report).toEqual(previous);
   });
 
-  it("AI 返回内容即保存，结构或引用不合格时展示原始分析且不重试", async () => {
+  it("AI 返回内容即保存，引用不合格时仍以结构化报告展示且不重试", async () => {
     const raw = reportResponse("并不存在于原文的句子");
     mocks.requestChatCompletion.mockResolvedValue(raw);
     const harness = await mountRecording();
     fireEvent.click(screen.getByRole("button", { name: "生成报告" }));
     await waitFor(() => expect(harness.current().recordingTasks[0].reportStatus).toBe("ready"));
     expect(mocks.requestChatCompletion).toHaveBeenCalledTimes(1);
-    expect(harness.current().sessions[0].report).toMatchObject({ title: "AI 原始分析", rawContent: raw });
-    expect(screen.getByRole("region", { name: "AI 原始分析" }).textContent).toContain("并不存在于原文的句子");
+    expect(harness.current().sessions[0].report).toMatchObject({ title: "原文分析报告", rawContent: undefined });
+    expect(screen.getByRole("region", { name: "值得保留的表达" }).textContent).toContain("并不存在于原文的句子");
   });
 
   it("旧报告存储后重新加载仍展示原有字符串和多个历史行动项", async () => {
