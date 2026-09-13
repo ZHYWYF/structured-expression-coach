@@ -9,9 +9,9 @@ export type KnowledgeMatchType = "lexical" | "structural" | "semantic";
 export type KnowledgeSeverity = "low" | "medium" | "high";
 
 export interface KnowledgeRuleSource {
-  type: "ai_generated";
+  type: "ai_generated" | "ai_live";
   ref: string;
-  reviewStatus: "sample_review";
+  reviewStatus: "sample_review" | "not_reviewed";
 }
 
 export interface KnowledgeRuleBase {

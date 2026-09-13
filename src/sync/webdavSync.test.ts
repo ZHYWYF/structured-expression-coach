@@ -43,6 +43,17 @@ describe("WebDAV sync", () => {
     await expect(testSyncConnection({ endpoint: "https://sync.test/", username: "user", password: "pass" })).resolves.toBeUndefined();
   });
 
+  it("连接前逐项说明缺少的同步配置，错误地址不发出请求", async () => {
+    const cases = [
+      { endpoint: "  ", username: "", password: "", expected: /填写同步服务地址/ },
+      { endpoint: "not-a-url", username: "", password: "", expected: /同步服务地址格式不正确/ },
+      { endpoint: "https://sync.test", username: "  ", password: "", expected: /填写同步账号/ },
+      { endpoint: "https://sync.test", username: "<REDACTED>", password: "", expected: /填写同步密码/ },
+    ];
+    for (const { expected, ...configuration } of cases) await expect(testSyncConnection(configuration)).rejects.toThrow(expected);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("uploads local audio and writes a sanitized workspace", async () => {
     const local = createEmptyWorkspace();
     local.recordingTasks = [recording("one", "2026-09-11T01:00:00.000Z")];

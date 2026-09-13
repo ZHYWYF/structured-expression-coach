@@ -10,10 +10,14 @@ function authorization(credentials: SyncCredentials): string {
   return `Basic ${btoa(unescape(encodeURIComponent(`${credentials.username}:${credentials.password}`)))}`;
 }
 function baseUrl(endpoint: string): string {
-  const url = new URL(endpoint);
-  const isLocal = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  const value = endpoint.trim();
+  if (!value) throw new Error("请先填写同步服务地址（WebDAV），再测试连接");
+  let url: URL;
+  try { url = new URL(value); }
+  catch { throw new Error("同步服务地址格式不正确，请填写包含 https:// 的完整 WebDAV 地址"); }
+  const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (url.protocol !== "https:" && !(isLocal && url.protocol === "http:")) throw new Error("同步地址必须使用 HTTPS；仅本机 localhost 允许 HTTP");
-  return endpoint.replace(/\/+$/, "");
+  return value.replace(/\/+$/, "");
 }
 function requestHeaders(credentials: SyncCredentials, contentType?: string): Record<string, string> {
   return { Authorization: authorization(credentials), ...(contentType ? { "Content-Type": contentType } : {}) };
@@ -98,7 +102,10 @@ async function put(credentials: SyncCredentials, path: string, body: BodyInit, c
 }
 
 export async function testSyncConnection(credentials: SyncCredentials): Promise<void> {
-  const response = await appFetch(baseUrl(credentials.endpoint), { method: "PROPFIND", headers: { ...requestHeaders(credentials), Depth: "0" } });
+  const endpoint = baseUrl(credentials.endpoint);
+  if (!credentials.username.trim()) throw new Error("请填写同步账号，再测试连接");
+  if (!credentials.password.trim()) throw new Error("请填写同步密码，再测试连接");
+  const response = await appFetch(endpoint, { method: "PROPFIND", headers: { ...requestHeaders(credentials), Depth: "0" } });
   if (!response.ok && response.status !== 207) throw new Error(`同步服务连接失败（${response.status}）`);
 }
 

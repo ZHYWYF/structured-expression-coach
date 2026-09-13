@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useAppDialog } from "./components/useAppDialog";
+import { useEffect, useState } from "react";
 import { AppShell } from "./components/AppShell";
 import { ExpressionWorkspace } from "./components/ExpressionWorkspace";
 import { HomePage } from "./components/HomePage";
@@ -33,9 +34,12 @@ const pageToSection: Record<WorkspacePage, SectionId> = {
 };
 
 export default function App() {
+  const appDialog = useAppDialog();
   const controller = useWorkspace();
   const activeSection = pageToSection[controller.currentPage];
   const navigate = (section: SectionId) => controller.navigate(sectionToPage[section]);
+  const [reportsOpened, setReportsOpened] = useState(false);
+  useEffect(() => { if (activeSection === "reports") setReportsOpened(true); }, [activeSection]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -46,7 +50,7 @@ export default function App() {
       if (closing) return;
       event.preventDefault();
       try { await controller.flush(); closing = true; await getCurrentWindow().destroy(); }
-      catch { window.alert("本地保存失败，已保留窗口。请重试保存后再退出。"); }
+      catch { void appDialog.notice("本地保存失败，已保留窗口。请重试保存后再退出。"); }
     }).then((off) => { if (disposed) off(); else unlisten = off; });
     return () => { disposed = true; unlisten?.(); };
   }, [controller.flush]);
@@ -75,7 +79,7 @@ export default function App() {
       case "workspace": return <ExpressionWorkspace controller={controller} />;
       case "interview": return <InterviewStudio controller={controller} />;
       case "training": return <TrainingPlan controller={controller} />;
-      case "reports": return <ReportsPage controller={controller} />;
+      case "reports": return null;
       case "settings": return <SettingsPage controller={controller} />;
       default: return <HomePage controller={controller} onNavigate={navigate} />;
     }
@@ -88,9 +92,13 @@ export default function App() {
       saveState={controller.persistenceError ? "保存异常" : controller.isSaving ? "正在保存" : controller.hasUnsavedChanges ? "有未保存更改" : "已保存到本地"}
       completedTrainingCount={controller.trainingPlans.flatMap((plan) => plan.tasks).filter((task) => task.status === "done").length}
     >
-      {controller.persistenceError ? <div className="action-notice" role="alert">{controller.persistenceError}</div> : null}
-      {controller.hasUnsavedChanges ? <button type="button" className="button-secondary" onClick={() => void controller.flush().catch(() => undefined)}>保存到本地</button> : null}
+      {appDialog.dialog}
+      <div className="workspace-save-status" role="status" aria-live="polite">
+        <span title={controller.persistenceError ?? undefined}>{controller.persistenceError ?? (controller.isSaving ? "正在保存到本地…" : controller.hasUnsavedChanges ? controller.preferences.autoSave ? "等待自动保存" : "自动保存已关闭，有未保存更改" : "已保存到本地")}</span>
+        {controller.hasUnsavedChanges && (!controller.preferences.autoSave || controller.persistenceError) ? <button type="button" disabled={controller.isSaving} onClick={() => void controller.flush().catch(() => undefined)}>{controller.persistenceError ? "重试保存" : "保存到本地"}</button> : null}
+      </div>
       {renderSection()}
+      {reportsOpened || activeSection === "reports" ? <div hidden={activeSection !== "reports"}><ReportsPage controller={controller} active={activeSection === "reports"} /></div> : null}
     </AppShell>
   );
 }

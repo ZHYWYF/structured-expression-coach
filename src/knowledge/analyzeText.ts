@@ -1,6 +1,7 @@
 import knowledgeBaseJson from "./data/local-knowledge.json";
 import generatedKnowledgeJson from "./data/generated-v1.json";
 import generatedKnowledgeV2Json from "./data/generated-v2.json";
+import { coachingCards, coachingContext, collectContextualFindings } from "./coachingKnowledge";
 
 import type {
   AnalysisFinding,
@@ -211,7 +212,7 @@ function collectHeuristicMatches(text: string, scenario: KnowledgeScenario): Mat
 const baseKnowledgeBase = knowledgeBaseJson as LocalKnowledgeBase;
 const generatedLexicalRules = (generatedKnowledgeJson as { lexicalRules: LexicalKnowledgeRule[] }).lexicalRules;
 const generatedLexicalRulesV2 = (generatedKnowledgeV2Json as { lexicalRules: LexicalKnowledgeRule[] }).lexicalRules;
-const heuristicExecutableRuleCount = 8;
+const heuristicExecutableRuleCount = 8 + coachingCards.length;
 export const localKnowledgeRulePacks = [baseKnowledgeBase.lexicalRules, generatedLexicalRules, generatedLexicalRulesV2] as const;
 const allLexicalRules = localKnowledgeRulePacks.flat();
 export const knowledgeBaseStats = {
@@ -256,6 +257,14 @@ function collectMatches(
 
       let start = text.indexOf(pattern);
       while (start !== -1) {
+        const context = coachingContext(text, start, start + pattern.length);
+        const before = text.slice(Math.max(0, start - 12), start);
+        const after = text.slice(start + pattern.length, start + pattern.length + 22);
+        const explicitlyRejected = /(?:不要说|不能说|不代表|并非|不能认为)[“"「]?\s*$/.test(before);
+        const quantified = rule.id === "GEN-004" && /^[（(，,:：\s]*(?:约|共|具体是)?\s*\d+(?:\.\d+)?\s*(?:[%％个名位条次项份家]|人)/.test(after);
+        const personalContribution = ["INT-021", "INT-022"].includes(rule.id) && /我(?:负责|主导|设计|分析|验证)[^。！？]{2,40}/.test(context) && /(?:产出|交付|决策|分工|具体|实现|完成|上线)/.test(context);
+        const actionable = ["GEN-019", "RET-006", "RET-012", "RET-017"].includes(rule.id) && ownerSignals.test(context) && timeSignals.test(context) && verificationSignals.test(context);
+        if (explicitlyRejected || quantified || personalContribution || actionable) { start = text.indexOf(pattern, start + 1); continue; }
         if (rule.id === "RPT-011" && hasConcreteProgressEvidence(text, start)) {
           start = text.indexOf(pattern, start + 1);
           continue;
@@ -345,6 +354,7 @@ export function analyzeText(
     [
       ...collectMatches(text, scenario, allLexicalRules),
       ...collectHeuristicMatches(text, scenario),
+      ...collectContextualFindings(text, scenario).map((finding) => ({ ...finding, priority: 94 })),
     ],
   );
 }

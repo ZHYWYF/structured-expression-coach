@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell";
 import { HomePage } from "./HomePage";
@@ -8,6 +8,7 @@ import { InterviewStudio } from "./InterviewStudio";
 import { ExpressionWorkspace } from "./ExpressionWorkspace";
 import { createController } from "../test/createController";
 import type { InterviewSession, PracticeSession } from "../core/types";
+import { adviceToFeedback, parseExpressionAdvice } from "../providers/expressionAdvice";
 
 const materialMocks = vi.hoisted(() => ({ readDocumentText: vi.fn() }));
 vi.mock("../materials/readDocument", () => ({ readDocumentText: materialMocks.readDocumentText }));
@@ -80,5 +81,32 @@ describe("product page flows", () => {
     fireEvent.click(screen.getByText("完成表达"));
     expect(controller.addStatement).toHaveBeenCalled();
     expect(controller.updateSession).toHaveBeenCalled();
+  });
+
+  it("AI批注与本地词条重叠时预览仍与原文一致，不自动替换", () => {
+    const text = "项目预计延期，因为仍然需要一些支持。";
+    const result = parseExpressionAdvice(JSON.stringify({ suggestions: [{ quote: text, issueType: "风险影响", reason: "范围不清", suggestion: "补充受影响范围" }] }), text, "model");
+    const current = { ...practice, draftText: text, feedback: [adviceToFeedback(practice.id, text, "report", result, "model")] };
+    const controller = createController({ sessions: [current], selectedSessionId: current.id, selectedSession: current });
+    controller.preferences.aiProvider.model = "model";
+    render(<ExpressionWorkspace controller={controller} />);
+    expect(screen.getByRole("region", { name: "原句修改预览" }).textContent).toBe(text);
+    expect(screen.getByLabelText("表达原文").getAttribute("disabled")).toBeNull();
+    expect(screen.getByText(/AI语义建议 · model/)).toBeTruthy();
+    expect(controller.updateSessionText).not.toHaveBeenCalled();
+  });
+  it("工作台重命名和删除使用应用内弹窗", async () => {
+    const controller = createController({ sessions: [practice], selectedSessionId: practice.id, selectedSession: practice });
+    render(<ExpressionWorkspace controller={controller} />);
+    fireEvent.click(screen.getByText("重命名"));
+    fireEvent.change(screen.getByLabelText("新名称"), { target: { value: "新的标题" } });
+    await act(async () => fireEvent.click(screen.getByText("保存名称")));
+    expect(controller.updateSession).toHaveBeenCalledWith(practice.id, expect.any(Function));
+    fireEvent.click(screen.getByText("删除当前会话"));
+    await act(async () => fireEvent.click(screen.getByText("取消")));
+    expect(controller.deleteSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("删除当前会话"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "确认删除" })));
+    expect(controller.deleteSession).toHaveBeenCalledWith(practice.id);
   });
 });

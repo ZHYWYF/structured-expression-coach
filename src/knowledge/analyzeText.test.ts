@@ -104,8 +104,8 @@ describe("analyzeText", () => {
     expect(localKnowledgeBase.advisoryRuleCatalog.structural).toHaveLength(18);
     expect(localKnowledgeBase.advisoryRuleCatalog.semantic).toHaveLength(30);
     expect(localKnowledgeBase.runtime.mode).toBe("hybrid_local");
-    expect(localKnowledgeBase.runtime.executableRuleCount).toBe(65);
-    expect(knowledgeBaseStats).toEqual({ lexicalRuleCount: 57, lexicalPatternCount: 227, heuristicRuleCount: 8, executableRuleCount: 65, advisoryRuleCount: 48 });
+    expect(localKnowledgeBase.runtime.executableRuleCount).toBe(89);
+    expect(knowledgeBaseStats).toEqual({ lexicalRuleCount: 57, lexicalPatternCount: 227, heuristicRuleCount: 32, executableRuleCount: 89, advisoryRuleCount: 48 });
     expect(localKnowledgeBase.runtime.disabledPendingDictionaryCandidates).toBe(
       321,
     );
@@ -180,5 +180,18 @@ describe("analyzeText", () => {
   it("public发布的基础规则与运行时基础规则一致", () => {
     expect(publicKnowledge.lexicalRules).toEqual(localKnowledgeRulePacks[0]);
     expect(publicKnowledge.packVersion).toBe(localKnowledgeBase.packVersion);
+  });
+
+  it("上下文给出量化和个人分工时不机械报错", () => {
+    expect(analyzeText("很多（20位）用户参与了访谈。", "general").some((item) => item.ruleId === "GEN-004")).toBe(false);
+    const text = "我们完成了项目。我负责方案设计与上线验证，研发负责实现，分工明确。";
+    expect(analyzeText(text, "interview").some((item) => item.ruleId === "INT-021")).toBe(false);
+    expect(analyzeText("不能认为肯定是系统的问题。", "general").some((item) => item.ruleId === "GEN-010")).toBe(false);
+  });
+
+  it("新上下文规则参与真实分析入口且保留原文", () => {
+    const text = "本周项目预计延期，接口仍未完成。";
+    expect(analyzeText(text, "report")).toEqual(expect.arrayContaining([expect.objectContaining({ ruleId: "CTX-R02", replacements: [] })]));
+    expect(text).toBe("本周项目预计延期，接口仍未完成。");
   });
 });

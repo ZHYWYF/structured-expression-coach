@@ -74,4 +74,15 @@ describe("OpenAI-compatible provider", () => {
     await expect(transcribeWithOnlineProvider(configuration, new File(["audio"], "sample.wav", { type: "audio/wav" }))).resolves.toBe("transcript");
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining("audio/transcriptions"), expect.objectContaining({ method: "POST" }));
   });
+
+  it("语义建议使用既有凭证配置并携带预算与取消信号", async () => {
+    await writeDeviceSecret("ai", "test-credential");
+    const configuration = { ...createEmptyWorkspace().preferences.aiProvider, enabled: true, model: "chosen-model", baseUrl: "https://api.deepseek.com" };
+    const abort = new AbortController();
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: '{"suggestions":[]}' } }] })));
+    await requestChatCompletion(configuration, [{ role: "user", content: "当前会话" }], { signal: abort.signal, maxTokens: 2200 });
+    const init = vi.mocked(fetch).mock.calls[0][1];
+    expect(JSON.parse(init?.body as string)).toMatchObject({ model: "chosen-model", max_tokens: 2200 });
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
 });

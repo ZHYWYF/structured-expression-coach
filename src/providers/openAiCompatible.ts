@@ -91,6 +91,7 @@ interface ChatMessage {
 export async function requestChatCompletion(
   configuration: ProviderConfiguration,
   messages: ChatMessage[],
+  options: { signal?: AbortSignal; maxTokens?: number } = {},
 ): Promise<string> {
   const apiKey = await readDeviceSecret("ai");
   if (!configuration.enabled || !configuration.model.trim() || !apiKey) {
@@ -98,11 +99,12 @@ export async function requestChatCompletion(
   }
   const response = await appFetch(apiUrl(configuration.baseUrl, "chat/completions"), {
     method: "POST",
+    signal: options.signal,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model: configuration.model, messages, temperature: 0.2 }),
+    body: JSON.stringify({ model: configuration.model, messages, temperature: 0.2, ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}) }),
   });
   if (!response.ok) throw new Error(await responseError(response, apiKey));
   const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
@@ -121,6 +123,7 @@ export async function transcribeWithOnlineProvider(
   configuration: ProviderConfiguration,
   file: File,
   onMetadata?: (metadata: OnlineTranscriptionMetadata) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   const apiKey = await readDeviceSecret("online-asr");
   if (!configuration.enabled || !configuration.model.trim() || !apiKey) {
@@ -133,6 +136,7 @@ export async function transcribeWithOnlineProvider(
   form.append("response_format", "verbose_json");
   const response = await appFetch(apiUrl(configuration.baseUrl, "audio/transcriptions"), {
     method: "POST",
+    signal,
     headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
   });

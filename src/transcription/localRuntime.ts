@@ -4,11 +4,17 @@ export const localModelCatalog = [
 ] as const;
 
 interface WorkerResponse { id: string; type: "progress" | "loaded" | "result" | "error"; progress?: number; message?: string; text?: string; chunks?: Array<{ text?: string; timestamp?: [number, number] }> }
-interface PendingRequest { resolve: (value: { text: string; chunks: WorkerResponse["chunks"] }) => void; reject: (reason?: unknown) => void; onProgress?: (progress: number, message: string) => void }
+interface PendingRequest { resolve: (value: { text: string; chunks: WorkerResponse["chunks"] }) => void; reject: (reason?: unknown) => void; onProgress?: (progress: number, message: string) => void; timer?: ReturnType<typeof setTimeout> }
+const INACTIVITY_TIMEOUT_MS = 10 * 60_000;
 
 class Runtime {
   private worker: Worker | null = null;
   private pending = new Map<string, PendingRequest>();
+  get isBusy() { return this.pending.size > 0; }
+  private armTimeout(pending: PendingRequest) {
+    clearTimeout(pending.timer);
+    pending.timer = setTimeout(() => this.cancelAll("本地模型连续 10 分钟未返回处理信号，已停止本次任务。原始录音和已保存的逐字稿不会被删除；可重试或自行选择在线转写。"), INACTIVITY_TIMEOUT_MS);
+  }
   private getWorker(): Worker {
     if (this.worker) return this.worker;
     this.worker = new Worker(new URL("./localWorker.ts", import.meta.url), { type: "module" });
@@ -16,30 +22,35 @@ class Runtime {
       const response = event.data;
       const pending = this.pending.get(response.id);
       if (!pending) return;
+      this.armTimeout(pending);
       if (response.type === "progress") { pending.onProgress?.(response.progress ?? 0, response.message ?? "正在处理"); return; }
+      clearTimeout(pending.timer);
       this.pending.delete(response.id);
       if (response.type === "error") pending.reject(new Error(response.message ?? "本地转写失败"));
       else pending.resolve({ text: response.text ?? "", chunks: response.chunks });
     };
-    this.worker.onerror = (event) => {
-      for (const pending of this.pending.values()) pending.reject(new Error(event.message || "本地推理进程异常"));
-      this.pending.clear(); this.worker?.terminate(); this.worker = null;
-    };
+    this.worker.onerror = (event) => this.cancelAll(event.message || "本地推理进程异常，原始录音已保留，请重试");
+    this.worker.onmessageerror = () => this.cancelAll("本地推理结果传输失败，原始录音已保留，请重试");
     return this.worker;
   }
   private request(type: "load" | "transcribe", modelId: string, audio: Float32Array | undefined, onProgress?: PendingRequest["onProgress"]) {
     return new Promise<{ text: string; chunks: WorkerResponse["chunks"] }>((resolve, reject) => {
+      if (this.pending.size) { reject(new Error("本地模型正在处理其他任务，请等待完成或先停止当前任务。")); return; }
       const id = crypto.randomUUID();
-      this.pending.set(id, { resolve, reject, onProgress });
-      if (audio) this.getWorker().postMessage({ id, type, modelId, audio }, [audio.buffer]);
-      else this.getWorker().postMessage({ id, type, modelId });
+      const pending: PendingRequest = { resolve, reject, onProgress };
+      this.pending.set(id, pending);
+      this.armTimeout(pending);
+      try {
+        if (audio) this.getWorker().postMessage({ id, type, modelId, audio }, [audio.buffer]);
+        else this.getWorker().postMessage({ id, type, modelId });
+      } catch (error) { clearTimeout(pending.timer); this.pending.delete(id); reject(error); }
     });
   }
   install(modelId: string, onProgress?: PendingRequest["onProgress"]) { return this.request("load", modelId, undefined, onProgress); }
   transcribe(modelId: string, audio: Float32Array, onProgress?: PendingRequest["onProgress"]) { return this.request("transcribe", modelId, audio, onProgress); }
   cancelAll(message = "任务已暂停") {
     this.worker?.terminate(); this.worker = null;
-    for (const pending of this.pending.values()) pending.reject(new Error(message));
+    for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error(message)); }
     this.pending.clear();
   }
 }

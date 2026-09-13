@@ -1,3 +1,4 @@
+import { useAppDialog } from "./useAppDialog";
 import { Cloud, Database, Download, HardDrive, KeyRound, Moon, Pause, RefreshCw, Save, Server, ShieldCheck, Trash2, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { WorkspaceController } from "../core/useWorkspace";
@@ -14,6 +15,7 @@ const themeLabels: Record<WorkspacePreferences["theme"], string> = { system: "�
 type ConnectionState = { status: "idle" | "testing" | "success" | "error"; message: string };
 
 function ProviderForm({ title, description, kind, value, onChange }: { title: string; description: string; kind: Exclude<SecretKind, "sync">; value: ProviderConfiguration; onChange: (next: ProviderConfiguration) => void }) {
+  const appDialog = useAppDialog();
   const [apiKey, setApiKey] = useState("");
   const [isSecretLoading, setIsSecretLoading] = useState(true);
   const [secretReadFailed, setSecretReadFailed] = useState(false);
@@ -41,7 +43,7 @@ function ProviderForm({ title, description, kind, value, onChange }: { title: st
     if (secretReadFailed && !secretEdited) { setConnection({ status: "error", message: "凭证读取失败，已保留原密钥。请重新打开设置或填写新密钥。" }); return; }
     try {
       if (secretEdited) {
-        if (!apiKey.trim() && !window.confirm("确定删除当前设备保存的 API Key？")) return;
+        if (!apiKey.trim() && !await appDialog.confirm("确定删除当前设备保存的 API Key？", { destructive: true })) return;
         await writeDeviceSecret(kind, apiKey);
       }
       onChange(value);
@@ -60,10 +62,12 @@ function ProviderForm({ title, description, kind, value, onChange }: { title: st
   };
   return (
     <section className="settings-group provider-settings">
+      {appDialog.dialog}
       <div className="settings-group-heading"><Server size={18} /><div><h2>{title}</h2><p>{description}</p></div></div>
+      {kind === "ai" ? <div className="provider-preset"><button type="button" className="button-secondary" onClick={() => onChange({ ...value, name: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "" })}>使用 DeepSeek 地址</button><small>填写你账号可用的模型 ID 和 API Key，再测试并保存。不会自动更换已保存的密钥。</small></div> : null}
       <div className="settings-form-grid">
         <label><span>配置名称</span><input value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} /></label>
-        <label><span>模型名称</span><input value={value.model} placeholder={kind === "ai" ? "例如：gpt-4.1-mini" : "例如：whisper-1"} onChange={(event) => onChange({ ...value, model: event.target.value })} /></label>
+        <label><span>模型名称</span><input value={value.model} placeholder={kind === "ai" ? "填写服务商提供的模型 ID" : "例如：whisper-1"} onChange={(event) => onChange({ ...value, model: event.target.value })} /></label>
         <label className="full"><span>服务地址</span><input value={value.baseUrl} placeholder="https://api.example.com/v1" onChange={(event) => onChange({ ...value, baseUrl: event.target.value })} /></label>
         <label className="full"><span>API Key（仅保存在当前设备，不参与同步）</span><input type="password" autoComplete="off" value={apiKey} disabled={isSecretLoading} placeholder={isSecretLoading ? "正在读取已保存的 API Key" : "输入 API Key"} onChange={(event) => { setApiKey(event.target.value); setSecretEdited(true); }} /></label>
       </div>
@@ -78,6 +82,7 @@ function ProviderForm({ title, description, kind, value, onChange }: { title: st
 }
 
 export function SettingsPage({ controller }: { controller: WorkspaceController }) {
+  const appDialog = useAppDialog();
   const { preferences } = controller;
   const [modelMessage, setModelMessage] = useState("");
   const [syncPassword, setSyncPassword] = useState("");
@@ -124,7 +129,7 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
     controller.updatePreferences({ installedModels: modelsRef.current });
   };
   const removeModel = async (id: string) => {
-    if (!window.confirm("删除这个模型？当前本地转写任务会停止。")) return;
+    if (!await appDialog.confirm("删除这个模型？当前本地转写任务会停止。", { destructive: true })) return;
     modelGeneration.current.set(id, (modelGeneration.current.get(id) ?? 0) + 1);
     localTranscriptionRuntime.cancelAll("模型已删除");
     try {
@@ -166,7 +171,7 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
     } finally { setIsSyncing(false); }
   };
   const clearLocalData = async () => {
-    if (!window.confirm("确定删除当前设备上的全部会话、录音、报告和训练计划？此操作不删除远端副本，再次同步会重新下载远端数据。")) return;
+    if (!await appDialog.confirm("确定删除当前设备上的全部会话、录音、报告和训练计划？此操作不删除远端副本，再次同步会重新下载远端数据。", { destructive: true })) return;
     try { for (const task of controller.recordingTasks) await deleteAudioFile(task.id); }
     catch { setSyncMessage("部分音频清理失败，已保留工作区记录，请重试。"); return; }
     const empty = createEmptyWorkspace();
@@ -175,9 +180,10 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
   };
   return (
     <div className="page settings-page">
+      {appDialog.dialog}
       <PageHeader eyebrow="设置" title="连接真实能力，管理本地数据" description="API 凭证仅保存在当前设备；未配置外部服务时，本地知识库和历史数据仍可使用。" />
       <div className="settings-layout">
-        <ProviderForm title="高级建议与总结" description="用于面试问题生成、答案深度反馈和结构化报告。支持 OpenAI-compatible 接口。" kind="ai" value={preferences.aiProvider} onChange={(aiProvider) => controller.updatePreferences({ aiProvider })} />
+        <ProviderForm title="高级建议与总结" description="用于表达工作台的可选语义建议、面试反馈和报告。支持 DeepSeek 等 OpenAI-compatible 接口；表达工作台需单独启用本会话 AI。" kind="ai" value={preferences.aiProvider} onChange={(aiProvider) => controller.updatePreferences({ aiProvider })} />
         <ProviderForm title="在线高精度转写" description="独立于 AI 配置，仅在你主动选择在线转写时上传音频。" kind="online-asr" value={preferences.onlineAsrProvider} onChange={(onlineAsrProvider) => controller.updatePreferences({ onlineAsrProvider })} />
         <section className="settings-group">
           <div className="settings-group-heading"><Volume2 size={18} /><div><h2>本地转写模型</h2><p>模型文件保存在当前设备，不参与跨端同步</p></div></div>
@@ -203,7 +209,7 @@ export function SettingsPage({ controller }: { controller: WorkspaceController }
           <SettingRow icon={Trash2} title="清理本地数据" value="删除会话、录音、报告和计划" onClick={() => void clearLocalData()} />
         </section>
       </div>
-      <footer className="settings-footer"><strong>言序 0.2.11</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
+      <footer className="settings-footer"><strong>言序 0.2.12</strong><span>{controller.isSaving ? "正在保存本地数据" : controller.persistenceError ? "本地保存出现异常" : "本地工作区已就绪"}</span></footer>
     </div>
   );
 }
@@ -213,5 +219,5 @@ function SettingToggle({ icon: Icon, title, description, checked, onChange }: { 
 }
 
 function SettingRow({ icon: Icon, title, value, onClick }: { icon: typeof Database; title: string; value: string; onClick?: () => void }) {
-  return <button className="setting-row" type="button" onClick={onClick}><span className="setting-icon"><Icon size={17} /></span><strong>{title}</strong><span className="setting-value">{value}</span></button>;
+  return onClick ? <button className="setting-row" type="button" onClick={onClick}><span className="setting-icon"><Icon size={17} /></span><strong>{title}</strong><span className="setting-value">{value}</span></button> : <div className="setting-row"><span className="setting-icon"><Icon size={17} /></span><strong>{title}</strong><span className="setting-value">{value}</span></div>;
 }

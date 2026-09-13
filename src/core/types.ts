@@ -210,6 +210,9 @@ export interface InterviewQuestion {
   suggestedMinutes: number;
   source: "local" | "ai";
   jdEvidence?: string;
+  resumeEvidence?: string;
+  parentQuestionId?: Id;
+  ruleVersion?: number;
 }
 
 export interface InterviewAnswerFeedback {
@@ -218,6 +221,12 @@ export interface InterviewAnswerFeedback {
   resumeConsistency: string;
   evidenceStrength: string;
   overallSuggestion: string;
+  answerFramework?: string[];
+  referenceAnswer?: string;
+  revisionNotes?: string[];
+  missingFacts?: string[];
+  supportingEvidence?: Array<{ source: "resume" | "answer"; quote: string }>;
+  answerSnapshot?: string;
   createdAt: ISODateTime;
 }
 
