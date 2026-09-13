@@ -1,0 +1,48 @@
+schema_version: 1
+
+feature: 言序结构化表达训练工作台
+slug: yanxu-expression-coach
+created: 2026-09-13
+updated: 2026-09-13
+
+status: review
+stage: 3
+complexity: heavy
+review_mode: off
+design_posture: incremental
+
+journey_summary: |
+  主线：用户从首页进入工作汇报、项目复盘、面试模拟或录音复盘，在独立会话中完成表达、获得局部反馈、保存结果并进入后续训练。
+  表达工作台：本地规则随输入即时标注，AI 语义建议由用户按会话主动开启；所有建议默认尚未采纳。
+  面试专区：每个会话固定一份 JD 和一份简历，本地或 AI 生成针对性问题、追问、答题框架和优化参考回答。
+  录音与报告：用户选择本地或在线转写，获得可校对逐字稿；AI 返回内容必须展示，结构完整时展示标准报告，不完整时展示可读的原始分析。
+  训练计划：用户可选择推荐项或自行填写目标、水平、周期和任务，任务可关联实际练习，会话报告可用于阶段回顾。
+  数据：默认本地保存；API Key 与同步密码仅保存在当前设备；用户可配置 WebDAV 同步全部业务数据及原始录音。
+  客户端：当前交付 Mac 本地应用与 Web 响应式界面，Android 复用业务逻辑但采用移动端单栏交互，作为后续版本。
+
+tracking:
+  needed: false
+  questions: []
+  conventions_source: default
+
+iterations:
+  - date: 2026-09-13
+    summary: 基于当前可运行 Demo、已确认产品决策和最终实现逻辑建立完整 PRD
+    trigger: 用户要求
+
+open_questions: []
+
+user_style_prefs:
+  - avoid: 模拟数据与不可操作的展示功能
+    prefer: 仅描述真实可用能力，所有入口必须有完整操作闭环
+    raised: 2026-09-13
+    context: 用户要求最终产品不得保留 Mock 数据或 Demo 占位
+  - avoid: AI 返回内容因格式或引用校验被整份拦截
+    prefer: 只要 AI 返回非空内容就展示，优先结构化，失败时提供可读原文
+    raised: 2026-09-13
+    context: 录音报告多次因严格校验无法查看
+  - avoid: 模板化卡片堆叠与廉价渐变
+    prefer: 专业编辑室风格，暖纸、深墨、朱砂、苔绿，克制且具有编辑感
+    raised: 2026-09-13
+    context: 用户确认的产品视觉方向
+
