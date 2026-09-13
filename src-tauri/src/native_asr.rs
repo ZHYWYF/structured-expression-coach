@@ -422,16 +422,19 @@ fn transcribe_native(
     params.set_print_timestamps(false);
     let progress_app = app.clone();
     let progress_task = task_id.to_string();
-    params.set_progress_callback_safe(Some(move |progress: i32| {
+    let progress_callback: Box<dyn FnMut(i32)> = Box::new(move |progress: i32| {
         emit_progress(
             &progress_app,
             &progress_task,
             progress.clamp(0, 99) as u8,
             format!("Metal 正在转写 · 已处理约 {progress}%"),
         );
-    }));
+    });
+    params.set_progress_callback_safe::<_, Box<dyn FnMut(i32)>>(Some(progress_callback));
     let abort_flag = cancelled.clone();
-    params.set_abort_callback_safe(Some(move || abort_flag.load(Ordering::Relaxed)));
+    let abort_callback: Box<dyn FnMut() -> bool> =
+        Box::new(move || abort_flag.load(Ordering::Relaxed));
+    params.set_abort_callback_safe::<_, Box<dyn FnMut() -> bool>>(Some(abort_callback));
     state.full(params, &samples).map_err(|error| {
         if cancelled.load(Ordering::Relaxed) {
             "已停止本次转写，原始录音已保留。".to_string()
