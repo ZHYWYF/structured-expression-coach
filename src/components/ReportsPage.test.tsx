@@ -269,6 +269,20 @@ describe("ReportsPage", () => {
     expect((await harness.repository.loadWorkspace())?.sessions[0].report).toEqual(previous);
   });
 
+  it("首次报告校验失败时自动请求修复一次并保存合格报告", async () => {
+    mocks.requestChatCompletion
+      .mockResolvedValueOnce(reportResponse("并不存在于原文的句子"))
+      .mockResolvedValueOnce(reportResponse());
+    const harness = await mountRecording();
+    fireEvent.click(screen.getByRole("button", { name: "生成报告" }));
+    await waitFor(() => expect(harness.current().recordingTasks[0].reportStatus).toBe("ready"));
+    expect(mocks.requestChatCompletion).toHaveBeenCalledTimes(2);
+    const repairPayload = JSON.parse(mocks.requestChatCompletion.mock.calls[1][1][1].content);
+    expect(repairPayload).toMatchObject({ task: expect.stringContaining("修正上一版报告"), transcript: "请求时的原始逐字稿" });
+    expect(repairPayload.validationError).toContain("不存在的内容");
+    expect(harness.current().sessions[0].report?.title).toBe("原文分析报告");
+  });
+
   it("旧报告存储后重新加载仍展示原有字符串和多个历史行动项", async () => {
     const previous = legacyReport();
     const harness = await mountRecording((seed) => { seed.sessions[0].report = previous; seed.recordingTasks[0].reportStatus = "ready"; });

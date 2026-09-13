@@ -22,6 +22,38 @@ function stringList(value: unknown, limit: number): value is string[] {
   return Array.isArray(value) && value.length <= limit && value.every((item) => nonempty(item, 2400));
 }
 
+function normalizeEvidenceText(value: string): string {
+  return value.normalize("NFKC").toLocaleLowerCase("zh-CN").replace(/[\p{P}\p{S}\s]/gu, "");
+}
+
+function alignQuoteToTranscript(quote: string, transcript: string): string | null {
+  if (transcript.includes(quote)) return quote;
+  const target = normalizeEvidenceText(quote);
+  if (!target || target.length < 4) return null;
+  let normalized = "";
+  const sourceIndexes: number[] = [];
+  for (let index = 0; index < transcript.length;) {
+    const character = String.fromCodePoint(transcript.codePointAt(index)!);
+    const folded = normalizeEvidenceText(character);
+    for (const item of folded) {
+      normalized += item;
+      sourceIndexes.push(index);
+    }
+    index += character.length;
+  }
+  const start = normalized.indexOf(target);
+  if (start < 0) return null;
+  const sourceStart = sourceIndexes[start];
+  const lastIndex = sourceIndexes[start + target.length - 1];
+  if (sourceStart === undefined || lastIndex === undefined) return null;
+  const lastCharacter = String.fromCodePoint(transcript.codePointAt(lastIndex)!);
+  return transcript.slice(sourceStart, lastIndex + lastCharacter.length);
+}
+
+function replaceEvidenceQuote(entry: string, quote: string, alignedQuote: string): string {
+  return entry.replace(`原文：${quote}`, `原文：${alignedQuote}`);
+}
+
 export function parseRecordingReport(content: string, transcript: string): ReportContent {
   let raw: unknown;
   try { raw = JSON.parse(content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
@@ -36,15 +68,19 @@ export function parseRecordingReport(content: string, transcript: string): Repor
       !stringList(data.strengths, 3) || !stringList(data.improvements, 6) || !stringList(data.actionItems, 1) || data.actionItems.length !== 1) {
     throw new Error("AI 报告需包含五个评价维度、原文依据和一个优先练习目标，请重新生成。");
   }
-  for (const [kind, entries] of [["strength", data.strengths], ["improvement", data.improvements]] as const) {
+  for (const [kind, entries, field] of [["strength", data.strengths, "strengths"], ["improvement", data.improvements, "improvements"]] as const) {
     const seen = new Set<string>();
-    for (const entry of entries) {
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
       const evidence = readReportEvidence(entry, kind);
-      if (!evidence || evidence.quote.length > 240 || !transcript.includes(evidence.quote)) {
+      const alignedQuote = evidence && evidence.quote.length <= 240 ? alignQuoteToTranscript(evidence.quote, transcript) : null;
+      if (!evidence || !alignedQuote) {
         throw new Error("AI 报告缺少原句或引用了逐字稿中不存在的内容，已拦截新报告；原有报告和逐字稿已保留。");
       }
-      if (seen.has(evidence.quote)) throw new Error("AI 对同一原句给出了重复条目，请重新生成。");
-      seen.add(evidence.quote);
+      const identity = normalizeEvidenceText(alignedQuote);
+      if (seen.has(identity)) throw new Error("AI 对同一原句给出了重复条目，请重新生成。");
+      seen.add(identity);
+      if (alignedQuote !== evidence.quote) (data[field] as string[])[index] = replaceEvidenceQuote(entry, evidence.quote, alignedQuote);
     }
   }
   const practice = /^首要目标：([^\n]+)\n练习方法：([^\n]+)\n完成标准：([^\n]+)$/.exec(data.actionItems[0].trim().replace(/\r\n/g, "\n"));

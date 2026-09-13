@@ -67,9 +67,16 @@ describe("parseRecordingReport", () => {
     expect(() => parseRecordingReport(JSON.stringify(report), transcript)).toThrow("不存在的内容");
   });
 
-  it.each(["我参与…资料。", "我主导整理了资料。", "我参与整理了资料！"])("拒绝拼接或改写的原文引用：%s", (quote) => {
+  it.each(["我参与…资料。", "我主导整理了资料。"])("拒绝拼接或改写的原文引用：%s", (quote) => {
     const report = validReport(); report.strengths = [`原文：${quote}\n亮点：保留表达`];
     expect(() => parseRecordingReport(JSON.stringify(report), transcript)).toThrow("不存在的内容");
+  });
+
+  it("容忍标点和空格差异，并把证据引用对齐回逐字稿原句", () => {
+    const report = validReport();
+    report.strengths = ["原文：我 参与整理了资料！\n亮点：保留表达"];
+    expect(parseRecordingReport(JSON.stringify(report), transcript).strengths)
+      .toEqual(["原文：我参与整理了资料\n亮点：保留表达"]);
   });
 
   it("拒绝把对象或旧纯文本用作新报告的证据条目", () => {

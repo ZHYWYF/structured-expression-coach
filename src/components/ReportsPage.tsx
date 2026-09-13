@@ -7,7 +7,7 @@ import { requestChatCompletion, transcribeWithOnlineProvider } from "../provider
 import { deleteAudioFile, loadAudioFile, saveAudioFile } from "../transcription/audioStore";
 import { decodeAudioTo16Khz, localTranscriptionRuntime } from "../transcription/localRuntime";
 import { PageHeader } from "./ui";
-import { buildRecordingReportPrompt, recordingScenarioLabels } from "../prompts/scenarioPrompts";
+import { buildRecordingReportPrompt, buildRecordingReportRepairPrompt, recordingScenarioLabels } from "../prompts/scenarioPrompts";
 import { recordingReportContext } from "../prompts/recordingReportContext";
 import { parseRecordingReport } from "../providers/recordingReport";
 import { RecordingReportReview } from "./RecordingReportReview";
@@ -205,12 +205,24 @@ export function ReportsPage({ controller, active = true }: { controller: Workspa
     setBusyTaskId(target.id); setActionError("");
     patchTask(target.id, { reportStatus: "generating" });
     try {
-      const content = await requestChatCompletion(
+      let content = await requestChatCompletion(
         controller.preferences.aiProvider,
         buildRecordingReportPrompt(scenario, transcript, context),
         { maxTokens: 8192 },
       );
-      const parsed = parseRecordingReport(content, transcript);
+      let parsed;
+      try {
+        parsed = parseRecordingReport(content, transcript);
+      } catch (error) {
+        const validationError = error instanceof Error ? error.message : "报告结构校验失败";
+        if (!stillCurrent()) { if (currentTask(target.id)) patchTask(target.id, { reportStatus: "outdated" }); return; }
+        content = await requestChatCompletion(
+          controller.preferences.aiProvider,
+          buildRecordingReportRepairPrompt(scenario, transcript, content, validationError, context),
+          { maxTokens: 8192 },
+        );
+        parsed = parseRecordingReport(content, transcript);
+      }
       const report: Report = {
         id: `report-${crypto.randomUUID()}`,
         sessionId,
