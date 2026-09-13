@@ -24,7 +24,7 @@
     }
   },
   "bundle": {
-    "macOS": { "infoPlist": "Info.plist" },
+    "macOS": { "infoPlist": "Info.plist", "minimumSystemVersion": "10.15" },
     "active": true,
     "targets": "all",
     "category": "Productivity",

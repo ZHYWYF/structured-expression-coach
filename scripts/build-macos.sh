@@ -16,6 +16,7 @@ export GOMAXPROCS="${GOMAXPROCS:-2}"
 # Tauri 官方建议：没有 Apple Developer 证书时，至少使用 ad-hoc
 # 签名，避免从浏览器下载的 Apple Silicon 应用被判定为损坏。
 export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}"
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-10.15}"
 
 if ! command -v pnpm >/dev/null 2>&1; then
   corepack prepare pnpm@9.12.3 --activate
