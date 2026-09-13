@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInterviewAnswerPrompt, buildInterviewQuestionPrompt, buildRecordingReportPrompt, buildRecordingReportRepairPrompt } from "./scenarioPrompts";
+import { buildInterviewAnswerPrompt, buildInterviewQuestionPrompt, buildRecordingReportPrompt } from "./scenarioPrompts";
 
 describe("scenario prompts", () => {
   it("uses different evaluation criteria for each recording scenario", () => {
@@ -13,12 +13,6 @@ describe("scenario prompts", () => {
     expect(new Set([interview, report, retrospective]).size).toBe(3);
   });
 
-  it("报告修复提示携带校验错误、原逐字稿与上一版输出", () => {
-    const messages = buildRecordingReportRepairPrompt("report", "真实逐字稿", "错误输出", "引用不存在");
-    const payload = JSON.parse(messages[1].content);
-    expect(payload).toMatchObject({ transcript: "真实逐字稿", previousOutput: "错误输出", validationError: "引用不存在" });
-    expect(payload.requirements.evidence).toContain("逐字稿");
-  });
 
   it("keeps JD, resume, question and answer in interview analysis", () => {
     const prompt = buildInterviewAnswerPrompt({ jobDescription: "JD", resume: "RESUME", question: "QUESTION", answer: "ANSWER" });

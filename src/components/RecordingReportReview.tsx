@@ -4,6 +4,17 @@ import { readReportEvidence } from "../providers/recordingReport";
 import { reportHasUsableScore } from "../core/reportScore";
 
 export function RecordingReportReview({ report }: { report: Report }) {
+  if (report.rawContent?.trim()) {
+    return <div className="generated-report raw-ai-report">
+      <div className="report-review-body">
+        <h3>{report.title || "AI 原始分析"}</h3>
+        <p className="report-limit-note">以下为 AI 返回的原始内容，未因格式、引用或字段缺失而拦截。</p>
+        <section aria-label="AI 原始分析" className="report-review-section">
+          <p className="report-preserve-lines">{report.rawContent}</p>
+        </section>
+      </div>
+    </div>;
+  }
   const insufficient = !reportHasUsableScore(report);
   return <div className="generated-report">
     <div className="report-score-large"><BarChart3 size={20} /><strong>{insufficient ? "—" : report.overallScore}</strong><span>{insufficient ? "暂不评分" : "训练参考分"}</span></div>

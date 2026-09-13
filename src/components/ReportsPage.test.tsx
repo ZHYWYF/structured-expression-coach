@@ -254,10 +254,9 @@ describe("ReportsPage", () => {
     expect(JSON.stringify(second)).not.toContain("当前会话目标");
   });
 
-  it.each(["引用不存在", "请求拒绝"])("%s时保留旧报告与原文，失败状态允许重新生成", async (failure) => {
+  it("请求拒绝时保留旧报告与原文，失败状态允许重新生成", async () => {
     const previous = legacyReport();
-    if (failure === "引用不存在") mocks.requestChatCompletion.mockResolvedValue(reportResponse("并不存在于原文的句子"));
-    else mocks.requestChatCompletion.mockRejectedValue(new Error("合成服务错误"));
+    mocks.requestChatCompletion.mockRejectedValue(new Error("合成服务错误"));
     const harness = await mountRecording((seed) => { seed.sessions[0].report = previous; seed.recordingTasks[0].reportStatus = "ready"; });
     fireEvent.click(screen.getByRole("button", { name: "重新生成报告" }));
     await waitFor(() => expect(harness.current().recordingTasks[0].reportStatus).toBe("failed"));
@@ -269,18 +268,15 @@ describe("ReportsPage", () => {
     expect((await harness.repository.loadWorkspace())?.sessions[0].report).toEqual(previous);
   });
 
-  it("首次报告校验失败时自动请求修复一次并保存合格报告", async () => {
-    mocks.requestChatCompletion
-      .mockResolvedValueOnce(reportResponse("并不存在于原文的句子"))
-      .mockResolvedValueOnce(reportResponse());
+  it("AI 返回内容即保存，结构或引用不合格时展示原始分析且不重试", async () => {
+    const raw = reportResponse("并不存在于原文的句子");
+    mocks.requestChatCompletion.mockResolvedValue(raw);
     const harness = await mountRecording();
     fireEvent.click(screen.getByRole("button", { name: "生成报告" }));
     await waitFor(() => expect(harness.current().recordingTasks[0].reportStatus).toBe("ready"));
-    expect(mocks.requestChatCompletion).toHaveBeenCalledTimes(2);
-    const repairPayload = JSON.parse(mocks.requestChatCompletion.mock.calls[1][1][1].content);
-    expect(repairPayload).toMatchObject({ task: expect.stringContaining("修正上一版报告"), transcript: "请求时的原始逐字稿" });
-    expect(repairPayload.validationError).toContain("不存在的内容");
-    expect(harness.current().sessions[0].report?.title).toBe("原文分析报告");
+    expect(mocks.requestChatCompletion).toHaveBeenCalledTimes(1);
+    expect(harness.current().sessions[0].report).toMatchObject({ title: "AI 原始分析", rawContent: raw });
+    expect(screen.getByRole("region", { name: "AI 原始分析" }).textContent).toContain("并不存在于原文的句子");
   });
 
   it("旧报告存储后重新加载仍展示原有字符串和多个历史行动项", async () => {

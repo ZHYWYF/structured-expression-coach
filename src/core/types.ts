@@ -117,6 +117,7 @@ export interface Report {
   strengths: string[];
   improvements: string[];
   actionItems: string[];
+  rawContent?: string;
   generatedAt: ISODateTime;
 }
 

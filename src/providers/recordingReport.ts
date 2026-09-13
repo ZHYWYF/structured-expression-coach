@@ -54,7 +54,7 @@ function replaceEvidenceQuote(entry: string, quote: string, alignedQuote: string
   return entry.replace(`原文：${quote}`, `原文：${alignedQuote}`);
 }
 
-export function parseRecordingReport(content: string, transcript: string): ReportContent {
+function parseStructuredRecordingReport(content: string, transcript: string): ReportContent {
   let raw: unknown;
   try { raw = JSON.parse(content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
   catch { throw new Error("AI 返回的报告不是有效 JSON，原有报告已保留，请重新生成。"); }
@@ -89,4 +89,16 @@ export function parseRecordingReport(content: string, transcript: string): Repor
   }
   return { title: data.title.trim(), overallScore: data.overallScore, dimensions: data.dimensions as ScoreDimension[],
     strengths: data.strengths, improvements: data.improvements, actionItems: data.actionItems };
+}
+
+export function parseRecordingReport(content: string, transcript: string): ReportContent {
+  const rawContent = content.trim();
+  if (!rawContent) {
+    return { title: "AI 原始分析", overallScore: 0, dimensions: [], strengths: [], improvements: [], actionItems: [], rawContent: "AI 未返回可显示内容。" };
+  }
+  try {
+    return parseStructuredRecordingReport(rawContent, transcript);
+  } catch {
+    return { title: "AI 原始分析", overallScore: 0, dimensions: [], strengths: [], improvements: [], actionItems: [], rawContent };
+  }
 }

@@ -18,6 +18,9 @@ function report(overrides: Partial<Report> = {}): Report {
 }
 
 describe("reportHasUsableScore", () => {
+  it("AI 原始内容不参与训练分数统计", () => {
+    expect(reportHasUsableScore(report({ rawContent: "未结构化的 AI 分析", overallScore: 88 }))).toBe(false);
+  });
   it.each(["", " \t\n"])("五个维度均信息不足时不评分，忽略摘要前导空白 %j", (prefix) => {
     const insufficient = report();
     insufficient.dimensions = insufficient.dimensions.map((dimension) => ({

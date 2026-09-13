@@ -45,8 +45,8 @@ describe("parseRecordingReport", () => {
     expect(parseRecordingReport(`\n\u0060\u0060\u0060json\n${JSON.stringify(report)}\n\u0060\u0060\u0060`, "")).toEqual(report);
   });
 
-  it.each(["不是JSON", "null", "[]"])("拒绝无法作为报告对象的输入：%s", (content) => {
-    expect(() => parseRecordingReport(content, transcript)).toThrow(/JSON|格式/);
+  it.each(["不是JSON", "null", "[]"])("无法结构化时保留 AI 原始内容：%s", (content) => {
+    expect(parseRecordingReport(content, transcript)).toMatchObject({ title: "AI 原始分析", rawContent: content, dimensions: [], strengths: [], improvements: [], actionItems: [] });
   });
 
   it.each([
@@ -56,20 +56,20 @@ describe("parseRecordingReport", () => {
     ["维度分数低于范围", (r: ReturnType<typeof validReport>) => { r.dimensions[0].score = -1; }],
     ["维度说明为空", (r: ReturnType<typeof validReport>) => { r.dimensions[0].summary = " "; }],
     ["标题为空", (r: ReturnType<typeof validReport>) => { r.title = " "; }],
-  ] as const)("拒绝破坏评分结构的报告：%s", (_, change) => {
+  ] as const)("评分结构不完整时降级展示原始内容：%s", (_, change) => {
     const report = validReport(); change(report);
-    expect(() => parseRecordingReport(JSON.stringify(report), transcript)).toThrow("五个评价维度");
+    expect(parseRecordingReport(JSON.stringify(report), transcript).rawContent).toBe(JSON.stringify(report));
   });
 
-  it.each(["strengths", "improvements"] as const)("拒绝%s中不存在于当前逐字稿的引用", (field) => {
+  it.each(["strengths", "improvements"] as const)("%s引用不存在时降级展示原始内容", (field) => {
     const report = validReport();
     report[field] = [report[field][0].replace(field === "strengths" ? "我参与整理了资料。" : "结果可能需要再核实。", "其他会话的训练目标")];
-    expect(() => parseRecordingReport(JSON.stringify(report), transcript)).toThrow("不存在的内容");
+    expect(parseRecordingReport(JSON.stringify(report), transcript).rawContent).toBe(JSON.stringify(report));
   });
 
-  it.each(["我参与…资料。", "我主导整理了资料。"])("拒绝拼接或改写的原文引用：%s", (quote) => {
+  it.each(["我参与…资料。", "我主导整理了资料。"])("拼接或改写引用时降级展示原始内容：%s", (quote) => {
     const report = validReport(); report.strengths = [`原文：${quote}\n亮点：保留表达`];
-    expect(() => parseRecordingReport(JSON.stringify(report), transcript)).toThrow("不存在的内容");
+    expect(parseRecordingReport(JSON.stringify(report), transcript).rawContent).toBe(JSON.stringify(report));
   });
 
   it("容忍标点和空格差异，并把证据引用对齐回逐字稿原句", () => {
@@ -79,14 +79,14 @@ describe("parseRecordingReport", () => {
       .toEqual(["原文：我参与整理了资料\n亮点：保留表达"]);
   });
 
-  it("拒绝把对象或旧纯文本用作新报告的证据条目", () => {
-    expect(() => parseRecordingReport(JSON.stringify({ ...validReport(), strengths: [{ quote: transcript, strength: "清楚" }] }), transcript)).toThrow("五个评价维度");
-    expect(() => parseRecordingReport(JSON.stringify({ ...validReport(), strengths: ["结论明确"] }), transcript)).toThrow("缺少原句");
+  it("对象或旧纯文本证据条目降级展示原始内容", () => {
+    expect(parseRecordingReport(JSON.stringify({ ...validReport(), strengths: [{ quote: transcript, strength: "清楚" }] }), transcript).rawContent).toBeTruthy();
+    expect(parseRecordingReport(JSON.stringify({ ...validReport(), strengths: ["结论明确"] }), transcript).rawContent).toBeTruthy();
   });
 
-  it.each(["strengths", "improvements"] as const)("拒绝%s同一列表重复引用", (field) => {
+  it.each(["strengths", "improvements"] as const)("%s重复引用时降级展示原始内容", (field) => {
     const report = validReport(); report[field].push(report[field][0]);
-    expect(() => parseRecordingReport(JSON.stringify(report), transcript)).toThrow("重复条目");
+    expect(parseRecordingReport(JSON.stringify(report), transcript).rawContent).toBe(JSON.stringify(report));
   });
 
   it("引用允许240字但拒绝241字和超出列表数量上限", () => {
@@ -94,21 +94,21 @@ describe("parseRecordingReport", () => {
     report.strengths = [`原文：${"字".repeat(240)}\n亮点：表意清楚`];
     expect(parseRecordingReport(JSON.stringify(report), "字".repeat(241)).strengths).toEqual(report.strengths);
     report.strengths = [`原文：${"字".repeat(241)}\n亮点：表意清楚`];
-    expect(() => parseRecordingReport(JSON.stringify(report), "字".repeat(241))).toThrow("缺少原句");
-    expect(() => parseRecordingReport(JSON.stringify({ ...validReport(), strengths: Array(4).fill(strength) }), transcript)).toThrow("五个评价维度");
-    expect(() => parseRecordingReport(JSON.stringify({ ...validReport(), improvements: Array(7).fill(improvement) }), transcript)).toThrow("五个评价维度");
+    expect(parseRecordingReport(JSON.stringify(report), "字".repeat(241)).rawContent).toBe(JSON.stringify(report));
+    expect(parseRecordingReport(JSON.stringify({ ...validReport(), strengths: Array(4).fill(strength) }), transcript).rawContent).toBeTruthy();
+    expect(parseRecordingReport(JSON.stringify({ ...validReport(), improvements: Array(7).fill(improvement) }), transcript).rawContent).toBeTruthy();
   });
 
-  it.each([{ label: "零个", actionItems: [] }, { label: "两个", actionItems: [goal, goal] }])("拒绝$label 下一次目标", ({ actionItems }) => {
-    expect(() => parseRecordingReport(JSON.stringify({ ...validReport(), actionItems }), transcript)).toThrow("一个优先练习目标");
+  it.each([{ label: "零个", actionItems: [] }, { label: "两个", actionItems: [goal, goal] }])("$label 下一次目标时降级展示原始内容", ({ actionItems }) => {
+    expect(parseRecordingReport(JSON.stringify({ ...validReport(), actionItems }), transcript).rawContent).toBeTruthy();
   });
 
-  it("拒绝没有练习方法或完成标准的目标", () => {
-    expect(() => parseRecordingReport(JSON.stringify({ ...validReport(), actionItems: ["首要目标：补证据\n练习方法：重述"] }), transcript)).toThrow("练习方法或完成标准");
+  it("没有练习方法或完成标准时降级展示原始内容", () => {
+    expect(parseRecordingReport(JSON.stringify({ ...validReport(), actionItems: ["首要目标：补证据\n练习方法：重述"] }), transcript).rawContent).toBeTruthy();
   });
 
-  it.each(["首要目标", "练习方法"])("拒绝%s仅有空白字符的练习安排", (field) => {
+  it.each(["首要目标", "练习方法"])("%s仅有空白字符时降级展示原始内容", (field) => {
     const actionItems = [goal.replace(new RegExp(`${field}：[^\\n]+`), `${field}：  `)];
-    expect(() => parseRecordingReport(JSON.stringify({ ...validReport(), actionItems }), transcript)).toThrow();
+    expect(parseRecordingReport(JSON.stringify({ ...validReport(), actionItems }), transcript).rawContent).toBeTruthy();
   });
 });

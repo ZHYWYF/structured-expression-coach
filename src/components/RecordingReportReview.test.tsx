@@ -16,6 +16,12 @@ function report(patch: Partial<Report> = {}): Report {
 afterEach(cleanup);
 
 describe("RecordingReportReview", () => {
+  it("原始 AI 内容无条件展示且不渲染结构化评分", () => {
+    render(<RecordingReportReview report={report({ title: "AI 原始分析", rawContent: "这是服务返回的完整分析内容", dimensions: [], strengths: [], improvements: [], actionItems: [], overallScore: 0 })} />);
+    expect(screen.getByRole("region", { name: "AI 原始分析" }).textContent).toContain("这是服务返回的完整分析内容");
+    expect(screen.getByText(/未因格式、引用或字段缺失而拦截/)).toBeTruthy();
+    expect(screen.queryByText("训练参考分")).toBeNull();
+  });
   it("分别展示原句、有据亮点、改法、原因及一个未采纳的练习目标", () => {
     const input = report(); const before = structuredClone(input);
     render(<RecordingReportReview report={input} />);

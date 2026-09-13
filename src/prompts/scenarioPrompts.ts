@@ -90,30 +90,6 @@ ${configuration.criteria}
   ];
 }
 
-export function buildRecordingReportRepairPrompt(
-  scenario: RecordingAnalysisScenario,
-  transcript: string,
-  invalidContent: string,
-  validationError: string,
-  context?: RecordingReportContext,
-): PromptMessage[] {
-  const base = buildRecordingReportPrompt(scenario, transcript, context);
-  return [
-    base[0],
-    {
-      role: "user",
-      content: JSON.stringify({
-        task: "修正上一版报告，只修格式、字段和引用，不新增逐字稿中没有的事实。只返回完整 JSON。",
-        validationError,
-        transcript,
-        previousOutput: invalidContent.slice(0, 24_000),
-        requirements: JSON.parse(base[1].content).requirements,
-        schema: JSON.parse(reportSchema),
-      }),
-    },
-  ];
-}
-
 export const recordingScenarioLabels: Record<RecordingAnalysisScenario, string> = {
   general: "通用表达",
   interview: "面试回答",
