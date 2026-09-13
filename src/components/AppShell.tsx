@@ -4,11 +4,11 @@ import {
   House,
   MessageSquareText,
   Settings2,
-  Sparkles,
   UserRoundSearch,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { NavigationItem, SectionId } from "./types";
+import { BrandMark } from "./BrandMark";
 
 const navigation: NavigationItem[] = [
   { id: "home", label: "首页", shortLabel: "首页", icon: House },
@@ -38,10 +38,10 @@ export function AppShell({
     <div className="app-shell">
       <aside className="sidebar">
         <button className="brand" type="button" onClick={() => onNavigate("home")}>
-          <span className="brand-mark"><Sparkles size={17} /></span>
+          <BrandMark className="brand-mark" />
           <span>
             <strong>言序</strong>
-            <small>表达教练</small>
+            <small>你的专业编辑室</small>
           </span>
         </button>
 
@@ -51,6 +51,7 @@ export function AppShell({
               className={active === id ? "nav-item active" : "nav-item"}
               type="button"
               key={id}
+              aria-current={active === id ? "page" : undefined}
               onClick={() => onNavigate(id)}
             >
               <Icon size={18} strokeWidth={1.7} />
@@ -70,7 +71,7 @@ export function AppShell({
 
       <div className="mobile-topbar">
         <button className="mobile-brand" type="button" onClick={() => onNavigate("home")}>
-          <Sparkles size={16} /> 言序
+          <BrandMark /> 言序
         </button>
         <span>{activeItem.label}</span>
       </div>
@@ -83,6 +84,7 @@ export function AppShell({
             className={active === id ? "mobile-nav-item active" : "mobile-nav-item"}
             type="button"
             key={id}
+            aria-current={active === id ? "page" : undefined}
             onClick={() => onNavigate(id)}
           >
             <Icon size={19} strokeWidth={1.8} />

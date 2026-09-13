@@ -11,6 +11,7 @@ import { useWorkspace } from "./core/useWorkspace";
 import type { WorkspacePage } from "./core/types";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { BrandMark } from "./components/BrandMark";
 
 const sectionToPage: Record<SectionId, WorkspacePage> = {
   home: "home",
@@ -62,6 +63,7 @@ export default function App() {
   if (!controller.isHydrated) {
     return (
       <div className="boot-screen" role="status" aria-live="polite">
+        <BrandMark className="boot-symbol" />
         <span className="boot-mark">言序</span>
         <p>正在载入本地工作区…</p>
       </div>

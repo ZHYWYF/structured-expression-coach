@@ -1,6 +1,6 @@
 [package]
 name = "structured-expression-coach"
-version = "0.2.10"
+version = "0.2.11"
 description = "本地优先的结构化表达训练应用"
 authors = ["言序"]
 edition = "2021"

@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <rect width="1024" height="1024" rx="224" fill="#242623"/>
-  <path d="M256 286c0-33 27-60 60-60h392c33 0 60 27 60 60v292c0 33-27 60-60 60H500L334 780c-25 21-62 3-62-29V638h-16c-33 0-60-27-60-60V286z" fill="#F07860"/>
-  <path d="M354 366h316M354 450h240M354 534h278" fill="none" stroke="#242623" stroke-linecap="round" stroke-width="44"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" fill="none">
+  <path class="proof-paper" d="M28 8h100l24 24v100c0 11-9 20-20 20H28c-11 0-20-9-20-20V28C8 17 17 8 28 8Z" fill="#F3F0E8"/>
+  <path d="M28 9h99.6L151 32.4V132c0 10.5-8.5 19-19 19H28c-10.5 0-19-8.5-19-19V28C9 17.5 17.5 9 28 9Z" stroke="#D9D3C7"/>
+  <path class="proof-ink" fill-rule="evenodd" clip-rule="evenodd" d="M68 25h25v9H68ZM40 46h80v9H40Zm11 23h26v9H51Zm44 0h14v9H95ZM51 96h58v34H51Zm9 9v16h40v-16Z" fill="#29302C"/>
+  <path class="proof-accent" d="m74 84 12-23 12 23" stroke="#A64738" stroke-width="6" stroke-linejoin="miter"/>
 </svg>

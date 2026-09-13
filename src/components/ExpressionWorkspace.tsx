@@ -57,9 +57,10 @@ function HighlightedText({ text, findings }: { text: string; findings: AnalysisF
   let cursor = 0;
   for (const finding of spanFindings) {
     if (finding.range.start > cursor) nodes.push(text.slice(cursor, finding.range.start));
+    const safeReplacement = ["GEN-032", "GEN-037"].includes(finding.ruleId) ? finding.replacements[0] : undefined;
     nodes.push(
-      <mark className={`annotation-mark ${findingTone(finding)}`} key={`${finding.ruleId}-${finding.range.start}`}>
-        {text.slice(finding.range.start, finding.range.end)}
+      <mark className={`annotation-mark ${findingTone(finding)}${safeReplacement ? " has-replacement" : ""}`} key={`${finding.ruleId}-${finding.range.start}`}>
+        {safeReplacement ? <><del>{text.slice(finding.range.start, finding.range.end)}</del><span className="visually-hidden">，建议改为：</span><ins>{safeReplacement}</ins></> : text.slice(finding.range.start, finding.range.end)}
       </mark>,
     );
     cursor = finding.range.end;
@@ -260,7 +261,7 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
         <aside className="session-rail">
           <div className="session-rail-title"><span>历史会话</span><strong>{sessions.length}</strong></div>
           <label className="session-search"><Search size={13} /><input value={search} placeholder="搜索标题或内容" onChange={(event) => setSearch(event.target.value)} /></label>
-          <label><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />显示归档会话</label><div className="session-list">
+          <label className="archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />显示归档会话</label><div className="session-list">
             {sessions.map((session) => (
               <button
                 className={selectedSession?.id === session.id ? "session-item active" : "session-item"}
@@ -284,17 +285,18 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
                 <button className={mode === item ? "active" : ""} type="button" key={item} onClick={() => changeMode(item)}>{item}</button>
               ))}
             </div>
-            <button className={isListening ? "icon-button recording" : "icon-button"} type="button" aria-label={isStarting ? "取消启动语音" : isListening ? "停止语音输入" : "开始语音输入"} onClick={() => void toggleMicrophone()}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button>
+            <button className={isListening ? "icon-button recording" : "icon-button"} type="button" aria-label={isStarting ? "取消启动语音" : isListening ? "停止语音输入" : "开始语音输入"} title={isStarting ? "取消启动语音" : isListening ? "停止语音输入" : "开始语音输入"} aria-pressed={isListening || isStarting} onClick={() => void toggleMicrophone()}>{isListening ? <MicOff size={18} /> : <Mic size={18} />}</button>
           </div>
           <textarea
             className="expression-input"
+            aria-label="表达原文"
             value={text}
             disabled={!selectedSession}
             onChange={(event) => selectedSession && controller.updateSessionText(event.target.value, selectedSession.id)}
             placeholder={selectedSession ? "先写下你最想让对方记住的结论……" : "新建一个会话后开始表达……"}
           />
           <div className="editor-footer">
-            <span>{voiceStatus || `${text.length} 字 · ${findings.length} 处可改善`}</span>
+            <span className={isListening || isStarting ? "voice-status active" : "voice-status"}>{voiceStatus || `${text.length} 字 · ${findings.length} 处可改善`}</span>
             <button type="button" disabled={!selectedSession || !text.trim() || text === savedText} onClick={finishExpression}><CornerDownLeft size={15} /> {text === savedText && text ? "已记录" : "完成表达"}</button>
           </div>
         </section>
@@ -304,7 +306,8 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
             <span><Sparkles size={16} /> 即时标注</span>
             <strong>{findings.length} 处提示</strong>
           </div>
-          <p className="empty-session-copy">{mode === "复盘" ? "复盘标准：事实、结果差距、根因、行动与验证" : "汇报标准：结论、依据、风险、支持与下一步"}</p><div className="annotated-preview">
+          <p className="analysis-guidance">建议预览，不修改原文{findings.length ? <span>尚未采纳</span> : null}</p>
+          <p className="empty-session-copy">{mode === "复盘" ? "复盘标准：事实、结果差距、根因、行动与验证" : "汇报标准：结论、依据、风险、支持与下一步"}</p><div className="annotated-preview" role="region" aria-label="原句修改预览" tabIndex={0}>
             <HighlightedText text={text} findings={findings} />
           </div>
           <div className="annotation-list">
@@ -313,8 +316,12 @@ export function ExpressionWorkspace({ controller }: { controller: WorkspaceContr
               const safeReplacement = ["GEN-032", "GEN-037"].includes(finding.ruleId) ? finding.replacements[0] : undefined;
               return (
                 <div className="annotation-item" key={`${finding.ruleId}-${finding.range.start}`}>
-                  <span className={`annotation-key ${tone}`}>{finding.matchedText}</span>
-                  <div><strong>{finding.issueType}</strong><p>{finding.reason} {finding.suggestion}</p><small>依据：{finding.source.ref} · AI 生成规则 · {finding.ruleId}</small><div className="finding-actions"><button type="button" onClick={() => safeReplacement ? acceptFinding(finding) : setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><Check size={12} /> {safeReplacement ? `改为“${safeReplacement}”` : "已阅建议"}</button><button type="button" onClick={() => setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><X size={12} /> 忽略</button></div></div>
+                  <div className="annotation-item-heading"><strong>{finding.issueType}</strong><span className="annotation-status">尚未采纳</span></div>
+                  <div className="annotation-excerpt">{safeReplacement ? <><del>{finding.matchedText}</del><span aria-hidden="true">→</span><ins>{safeReplacement}</ins></> : <span className={`annotation-key ${tone}`}>{finding.matchedText}</span>}</div>
+                  <p className="annotation-reason"><span>为什么</span>{finding.reason}</p>
+                  <p className="annotation-suggestion"><span>建议</span>{finding.suggestion}</p>
+                  <small className="annotation-source">依据：{finding.source.ref} · AI 生成规则 · {finding.ruleId}</small>
+                  <div className="finding-actions"><button type="button" onClick={() => safeReplacement ? acceptFinding(finding) : setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><Check size={12} /> {safeReplacement ? `改为“${safeReplacement}”` : "已阅建议"}</button><button type="button" onClick={() => setDismissed([...dismissed, `${finding.ruleId}:${finding.range.start}:${finding.matchedText}`])}><X size={12} /> 忽略</button></div>
                 </div>
               );
             })}

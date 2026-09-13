@@ -36,6 +36,10 @@ jobs:
       - name: Build universal macOS app
         env:
           APPLE_SIGNING_IDENTITY: "-"
+          CARGO_BUILD_JOBS: "1"
+          NODE_OPTIONS: "--max-old-space-size=2048"
+          RAYON_NUM_THREADS: "1"
+          GOMAXPROCS: "1"
         run: bash scripts/build-macos.sh
 
       - name: Upload installer

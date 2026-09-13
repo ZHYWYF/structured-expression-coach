@@ -2,6 +2,7 @@ import { ArrowRight, BriefcaseBusiness, Clock3, FolderKanban, Mic2, UserRoundSea
 import type { WorkspaceController } from "../core/useWorkspace";
 import type { SectionId } from "./types";
 import { ArrowLink } from "./ui";
+import { BrandMark } from "./BrandMark";
 
 function formatToday(): string {
   const parts = new Intl.DateTimeFormat("zh-CN", {
@@ -39,18 +40,27 @@ export function HomePage({ controller, onNavigate }: { controller: WorkspaceCont
   return (
     <div className="page home-page">
       <section className="home-hero">
-        <div>
+        <div className="hero-copy">
           <p className="eyebrow">{formatToday()}</p>
-          <h1>把想法说清楚，<br />从这一段开始。</h1>
-          <p>选择一个真实场景，言序会在你表达的同时，标出可以立刻改善的部分。</p>
+          <p className="hero-product">言序<span>专业编辑室</span></p>
+          <h1 aria-label="言序｜让每一句，都更有分量">让每一句，<br />都更有<span className="hero-emphasis">分量</span>。</h1>
+          <p>从你的原话出发。看见问题，打磨表达，让想法被清楚地听见。</p>
         </div>
-        <div className="daily-progress" aria-label="当前计划进度">
+        <div className="hero-imprint" aria-hidden="true"><BrandMark /><span>斟词 · 酌句</span></div>
+      </section>
+
+      <section className="daily-progress" aria-label="当前计划进度">
+        {plan ? <>
           <span>当前计划</span>
           <strong>{completedTasks}<small>/{taskTotal}</small></strong>
           <div className="progress-track"><i style={{ width: `${taskTotal ? (completedTasks / taskTotal) * 100 : 0}%` }} /></div>
           <em>{completedTasks === taskTotal && taskTotal ? "计划任务已完成" : `还有 ${Math.max(0, taskTotal - completedTasks)} 项训练待完成`}</em>
-          {plan ? <button type="button" onClick={() => onNavigate("training")}>继续训练：{plan.title}</button> : null}
-        </div>
+          <button type="button" onClick={() => onNavigate("training")}>继续训练：{plan.title}<ArrowRight size={15} /></button>
+        </> : <>
+          <span>循序练习</span>
+          <p>还没有进行中的训练计划。从一个小目标开始。</p>
+          <button type="button" onClick={() => onNavigate("training")}>制定训练计划<ArrowRight size={15} /></button>
+        </>}
       </section>
 
       <section className="scenario-section">
