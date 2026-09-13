@@ -148,6 +148,7 @@ describe("InterviewStudio", () => {
     await act(async () => fireEvent.click(screen.getByText("同意并继续")));
     expect(currentInterview(harness.current()).interviewQuestions).toHaveLength(2);
     expect(currentInterview(harness.current()).questionAnswers?.["q-A"]).toBe("A原答案");
+    expect(mocks.requestChatCompletion.mock.calls[0][2]).toMatchObject({ maxTokens: 4096 });
   });
   it("优化参考稿与原答案并排保存，不改写用户答案", async () => {
     mocks.requestChatCompletion.mockResolvedValue(JSON.stringify({ ...feedback, answerFramework: ["目标", "行动", "结果"],
@@ -161,6 +162,7 @@ describe("InterviewStudio", () => {
     await act(async () => harness.current().flush());
     const stored = await harness.repository.loadWorkspace();
     expect((stored?.sessions[0] as InterviewSession).interviewFeedback?.["q-A"]?.answerSnapshot).toBe("A原答案");
+    expect(mocks.requestChatCompletion.mock.calls[0][2]).toMatchObject({ maxTokens: 8192 });
   });
   it("更新旧题保留已作答题目及答案", async () => {
     const harness = await mountInterviews();

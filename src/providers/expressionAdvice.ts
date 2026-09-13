@@ -50,7 +50,7 @@ export function parseExpressionAdvice(content: string, text: string, model: stri
 }
 
 export async function requestExpressionAdvice(configuration: ProviderConfiguration, text: string, scenario: KnowledgeScenario, local: AnalysisFinding[], signal: AbortSignal) {
-  const result = await requestChatCompletion(configuration, buildExpressionAdvicePrompt(text, scenario, local), { signal, maxTokens: 2200 });
+  const result = await requestChatCompletion(configuration, buildExpressionAdvicePrompt(text, scenario, local), { signal, maxTokens: 4096 });
   signal.throwIfAborted();
   return parseExpressionAdvice(result, text, configuration.model);
 }

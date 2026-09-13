@@ -136,7 +136,7 @@ export function InterviewStudio({ controller }: { controller: WorkspaceControlle
       const content = await requestChatCompletion(
         controller.preferences.aiProvider,
         buildInterviewQuestionPrompt(selectedSession.jobDescription.content, selectedSession.resume.content, followUp && question ? { question: question.text, answer } : undefined, questions.map((item) => item.text)),
-        { signal: abort.signal, maxTokens: 2400 },
+        { signal: abort.signal, maxTokens: 4096 },
       );
       abort.signal.throwIfAborted();
       const generated = parseInterviewQuestions(content, selectedSession.jobDescription.content, selectedSession.resume.content, questions, followUp ? question?.id : undefined);
@@ -178,7 +178,7 @@ export function InterviewStudio({ controller }: { controller: WorkspaceControlle
         resume: selectedSession.resume.content,
         question: question.text,
         answer,
-      }), { signal: abort.signal, maxTokens: 4200 });
+      }), { signal: abort.signal, maxTokens: 8192 });
       abort.signal.throwIfAborted();
       const next = parseInterviewFeedback(content, { resume: selectedSession.resume.content, answer });
       controller.updateSession(selectedSession.id, (session) => isInterviewSession(session) && session.questionAnswers?.[question.id] === answer && session.jobDescription.content === selectedSession.jobDescription.content && session.resume.content === selectedSession.resume.content ? { ...session, interviewFeedback: { ...session.interviewFeedback, [question.id]: next } } : session);

@@ -41,10 +41,21 @@ describe("OpenAI-compatible provider", () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "OK" } }] }), { status: 200 }));
 
     await expect(testProviderConnection(configuration, "key", "ai")).resolves.toEqual(expect.objectContaining({ ok: true }));
-    expect(fetch).toHaveBeenCalledWith("https://api.deepseek.com/chat/completions", expect.objectContaining({
-      method: "POST",
-      body: expect.stringContaining('"model":"deepseek-flash"'),
-    }));
+    expect(fetch).toHaveBeenCalledWith("https://api.deepseek.com/chat/completions", expect.objectContaining({ method: "POST" }));
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toMatchObject({
+      model: "deepseek-flash",
+      thinking: { type: "disabled" },
+    });
+  });
+
+  it("HTTP成功但没有正文时连接测试失败，不再产生假阳性", async () => {
+    const configuration = { ...createEmptyWorkspace().preferences.aiProvider, enabled: true, model: "deepseek-flash", baseUrl: "https://api.deepseek.com" };
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: null, reasoning_content: "推理尚未完成" } }] }), { status: 200 }));
+
+    await expect(testProviderConnection(configuration, "key", "ai")).resolves.toEqual({
+      ok: false,
+      message: expect.stringMatching(/输出预算|正文/),
+    });
   });
 
   it("preserves string errors returned by the native transport", async () => {
@@ -63,7 +74,34 @@ describe("OpenAI-compatible provider", () => {
     expect(fetch).toHaveBeenCalledWith("https://example.test/v1/chat/completions", expect.objectContaining({ method: "POST" }));
 
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ choices: [] }), { status: 200 }));
-    await expect(requestChatCompletion(configuration, [])).rejects.toThrow("AI 服务没有返回有效内容");
+    await expect(requestChatCompletion(configuration, [])).rejects.toThrow("没有返回可读取的正文");
+  });
+
+  it("兼容OpenAI文本数组响应，并在官方DeepSeek结构化任务中关闭思考", async () => {
+    const configuration = { ...createEmptyWorkspace().preferences.aiProvider, enabled: true, model: "deepseek-flash", baseUrl: "https://api.deepseek.com" };
+    await writeDeviceSecret("ai", "key");
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: [{ type: "text", text: " 结构化结果 " }] } }] }), { status: 200 }));
+
+    await expect(requestChatCompletion(configuration, [{ role: "user", content: "分析" }], { maxTokens: 8192 })).resolves.toBe("结构化结果");
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toMatchObject({
+      model: "deepseek-flash",
+      max_tokens: 8192,
+      thinking: { type: "disabled" },
+    });
+  });
+
+  it("区分输出被截断、只有推理内容和未知响应结构", async () => {
+    const configuration = { ...createEmptyWorkspace().preferences.aiProvider, enabled: true, model: "deepseek-flash", baseUrl: "https://api.deepseek.com" };
+    await writeDeviceSecret("ai", "key");
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "", reasoning_content: "仍在推理" } }] }), { status: 200 }));
+    await expect(requestChatCompletion(configuration, [])).rejects.toThrow(/输出预算不足/);
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: null, reasoning_content: "只有推理" } }] }), { status: 200 }));
+    await expect(requestChatCompletion(configuration, [])).rejects.toThrow(/只返回了推理内容/);
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ output_text: "其他接口格式" }), { status: 200 }));
+    await expect(requestChatCompletion(configuration, [])).rejects.toThrow(/返回格式不兼容/);
   });
 
   it("sends audio with the independently configured ASR credential", async () => {

@@ -208,7 +208,7 @@ export function ReportsPage({ controller, active = true }: { controller: Workspa
       const content = await requestChatCompletion(
         controller.preferences.aiProvider,
         buildRecordingReportPrompt(scenario, transcript, context),
-        { maxTokens: 4096 },
+        { maxTokens: 8192 },
       );
       const parsed = parseRecordingReport(content, transcript);
       const report: Report = {

@@ -24,6 +24,47 @@ function apiUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
+function isDeepSeek(configuration: ProviderConfiguration): boolean {
+  try {
+    return new URL(configuration.baseUrl).hostname === "api.deepseek.com";
+  } catch {
+    return false;
+  }
+}
+
+interface ChatCompletionBody {
+  choices?: Array<{
+    finish_reason?: unknown;
+    text?: unknown;
+    message?: { content?: unknown; reasoning_content?: unknown };
+  }>;
+}
+
+function messageText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (!Array.isArray(value)) return "";
+  return value.flatMap((part) => {
+    if (typeof part === "string") return [part];
+    if (!part || typeof part !== "object") return [];
+    const item = part as Record<string, unknown>;
+    return item.type === "text" && typeof item.text === "string" ? [item.text] : [];
+  }).join("").trim();
+}
+
+function readChatCompletion(body: ChatCompletionBody): string {
+  const choice = body.choices?.[0];
+  const content = messageText(choice?.message?.content) || messageText(choice?.text);
+  if (content) return content;
+  if (choice?.finish_reason === "length") {
+    throw new Error("AI 输出预算不足，最终正文被截断。请重试；应用已为结构化分析提高预算并关闭 DeepSeek 思考模式。");
+  }
+  if (messageText(choice?.message?.reasoning_content)) {
+    throw new Error("AI 只返回了推理内容，没有返回最终正文。请重试；DeepSeek 结构化任务将自动关闭思考模式。");
+  }
+  if (Array.isArray(body.choices)) throw new Error("AI 服务没有返回可读取的正文");
+  throw new Error("AI 服务返回格式不兼容：未找到 choices[0].message.content");
+}
+
 function redact(value: string, secret = ""): string {
   return (secret.length >= 3 ? value.split(secret).join("<REDACTED>") : value).replace(/Bearer\s+[^\s"'<>]+/gi, "Bearer <REDACTED>").replace(/\bsk-[A-Za-z0-9_-]{8,}/g, "<REDACTED>");
 }
@@ -69,14 +110,19 @@ export async function testProviderConnection(
           body: JSON.stringify({
             model: configuration.model.trim(),
             messages: [{ role: "user", content: "请只回复 OK" }],
-            max_tokens: 2,
+            max_tokens: 32,
             temperature: 0,
+            ...(isDeepSeek(configuration) ? { thinking: { type: "disabled" } } : {}),
           }),
         })
       : await appFetch(apiUrl(configuration.baseUrl, "models"), {
           headers: { Authorization: `Bearer ${apiKey.trim()}` },
         });
     if (!response.ok) return { ok: false, message: await responseError(response, apiKey) };
+    if (kind === "ai") {
+      try { readChatCompletion(await response.json() as ChatCompletionBody); }
+      catch (error) { return { ok: false, message: error instanceof Error ? error.message : "AI 服务没有返回可读取的正文" }; }
+    }
     return { ok: true, latencyMs: Math.round(performance.now() - startedAt) };
   } catch (error) {
     return { ok: false, message: redact(requestError(error), apiKey) };
@@ -97,6 +143,13 @@ export async function requestChatCompletion(
   if (!configuration.enabled || !configuration.model.trim() || !apiKey) {
     throw new Error("请先在设置中启用并完成 AI 配置");
   }
+  const requestBody = {
+    model: configuration.model.trim(),
+    messages,
+    temperature: 0.2,
+    ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
+    ...(isDeepSeek(configuration) ? { thinking: { type: "disabled" } } : {}),
+  };
   const response = await appFetch(apiUrl(configuration.baseUrl, "chat/completions"), {
     method: "POST",
     signal: options.signal,
@@ -104,14 +157,10 @@ export async function requestChatCompletion(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model: configuration.model, messages, temperature: 0.2, ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}) }),
+    body: JSON.stringify(requestBody),
   });
   if (!response.ok) throw new Error(await responseError(response, apiKey));
-  const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-  const raw = body.choices?.[0]?.message?.content;
-  const content = typeof raw === "string" ? raw.trim() : "";
-  if (!content) throw new Error("AI 服务没有返回有效内容");
-  return content;
+  return readChatCompletion(await response.json() as ChatCompletionBody);
 }
 
 export interface OnlineTranscriptionMetadata {

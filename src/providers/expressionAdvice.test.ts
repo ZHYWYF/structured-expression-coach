@@ -46,7 +46,7 @@ describe("表达AI语义建议", () => {
     const provider = { enabled: true, model: "model", baseUrl: "https://example.test", name: "测试配置" };
     const abort = new AbortController();
     expect(await requestExpressionAdvice(provider, text, "report", [], abort.signal)).toHaveLength(1);
-    expect(mocks.request).toHaveBeenCalledWith(provider, expect.any(Array), { signal: abort.signal, maxTokens: 2200 });
+    expect(mocks.request).toHaveBeenCalledWith(provider, expect.any(Array), { signal: abort.signal, maxTokens: 4096 });
     abort.abort();
     await expect(requestExpressionAdvice(provider, text, "report", [], abort.signal)).rejects.toThrow();
   });

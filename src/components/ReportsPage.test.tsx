@@ -130,7 +130,7 @@ describe("ReportsPage", () => {
     await waitFor(() => expect(mocks.requestChatCompletion).toHaveBeenCalled());
     const messages = mocks.requestChatCompletion.mock.calls[0][1] as Array<{ content: string }>;
     expect(messages.map((item) => item.content).join("\n")).toContain("根因证据");
-    expect(mocks.requestChatCompletion.mock.calls[0][2]).toEqual({ maxTokens: 4096 });
+    expect(mocks.requestChatCompletion.mock.calls[0][2]).toEqual({ maxTokens: 8192 });
     expect(controller.updateSession).toHaveBeenCalledWith(session.id, expect.any(Function));
   });
 
@@ -185,7 +185,7 @@ describe("ReportsPage", () => {
     expect(stored?.sessions[0].draftText).toBe("请求时的原始逐字稿");
     expect(stored?.sessions[0].report?.actionItems).toHaveLength(1);
     expect(stored?.sessions[0].report?.strengths.every((item) => typeof item === "string")).toBe(true);
-    expect(mocks.requestChatCompletion.mock.calls[0][2]).toEqual({ maxTokens: 4096 });
+    expect(mocks.requestChatCompletion.mock.calls[0][2]).toEqual({ maxTokens: 8192 });
   });
 
   it.each(["目标", "重点", "场景目标"])("生成期间相关%s变化后不保存旧结果且保留历史报告", async (field) => {
@@ -198,7 +198,7 @@ describe("ReportsPage", () => {
     expect(harness.current().recordingTasks[0].reportStatus).toBe("generating");
     const payload = JSON.parse(mocks.requestChatCompletion.mock.calls[0][1][1].content);
     expect(payload.trainingGoals).toEqual(field === "场景目标" ? ["结论先行", "事实与数据", "明确下一步"] : ["当前会话目标"]);
-    expect(mocks.requestChatCompletion.mock.calls[0][2]).toEqual({ maxTokens: 4096 });
+    expect(mocks.requestChatCompletion.mock.calls[0][2]).toEqual({ maxTokens: 8192 });
     act(() => {
       if (field === "场景目标") {
         const snapshot = harness.current().getSnapshot!();
